@@ -1,0 +1,13 @@
+AMORÉTTO AI社員オフィス MVP 1.1 検証結果
+
+npm run typecheck：成功
+npm run build：成功
+
+ビルド環境：
+・Next.js 16.2.10
+・React 19.2.7
+・Node.js 22系
+
+注意：
+npm auditでは、Next.js内部に同梱されたPostCSSに由来するmoderate判定が2件表示されました。
+high / critical は0件です。自動修正案が不適切な旧版Next.jsへのダウングレードだったため、適用していません。
