@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#1f2a26" />
+  <meta name="description" content="AMORÉTTOスタッフ向け実務マニュアル" />
   <title>AMORÉTTO STANDARD</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
@@ -13,16 +14,18 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+<div class="offline-banner" id="offlineBanner">オフラインです。保存済みの内容を表示しています。</div>
 <div class="app">
   <header>
     <div class="brand-row">
-      <div>
+      <div class="brand-wrap">
         <div class="brand">AMORÉTTO STANDARD</div>
         <div class="tagline">目立たず、押しつけず、外さない。</div>
       </div>
       <div class="header-actions">
+        <button class="icon-btn" id="searchBtn" aria-label="全体検索">⌕</button>
         <button class="sync-btn" id="syncBtn"><span id="syncDot">●</span><span id="syncLabel">共有</span></button>
-        <button class="owner-btn" id="ownerBtn">店主モード</button>
+        <button class="owner-btn" id="ownerBtn">店主</button>
       </div>
     </div>
   </header>
@@ -30,12 +33,21 @@
   <main>
     <section id="today" class="screen active">
       <div class="eyebrow">Today</div>
-      <h1 id="todayDate"></h1>
-      <div class="sync-note small muted" id="updatedAt">共有データを確認しています。</div>
+      <div class="title-row">
+        <div>
+          <h1 id="todayDate"></h1>
+          <div class="sync-note small muted" id="updatedAt">共有データを確認しています。</div>
+        </div>
+        <button class="profile-chip" id="profileBtn"><span id="profileInitial">＋</span><span id="profileLabel">名前を登録</span></button>
+      </div>
+
       <div class="card hero">
-        <div class="small muted">今日の合言葉</div>
+        <div class="small hero-label">今日の合言葉</div>
         <div class="quote" id="todayQuote">料理だけでなく、お客様が過ごす時間をつくる。</div>
       </div>
+
+      <div id="announcementList"></div>
+
       <div class="card install-card" id="installCard">
         <div>
           <strong>ホーム画面に追加</strong>
@@ -43,67 +55,109 @@
         </div>
         <button class="secondary" id="installBtn">追加する</button>
       </div>
-      <div class="grid">
-        <div class="metric">
+
+      <div class="metric-grid">
+        <button class="metric" id="openingMetric">
           <span class="small muted">開店前チェック</span>
-          <strong id="todayCheckCount">0／8</strong>
-        </div>
-        <div class="metric">
-          <span class="small muted">登録ドリンク</span>
-          <strong id="drinkCount">0件</strong>
-        </div>
+          <strong id="todayCheckCount">0／0</strong>
+          <span class="mini-link">確認する ›</span>
+        </button>
+        <button class="metric" id="trainingMetric">
+          <span class="small muted">研修の進み具合</span>
+          <strong id="trainingCount">0%</strong>
+          <span class="mini-link">学ぶ ›</span>
+        </button>
       </div>
+
       <div class="card notice">
-        <h3>店主からの連絡</h3>
-        <p id="ownerNotice" style="margin-bottom:0">本日の予約内容とアレルギー情報を、営業前に必ず確認してください。</p>
+        <div class="card-title-row"><h3>店主からの連絡</h3><span class="badge" id="revisionBadge">Ver.3</span></div>
+        <p id="ownerNotice" class="preline no-bottom">本日の予約内容とアレルギー情報を、営業前に必ず確認してください。</p>
       </div>
+
+      <div class="quick-grid">
+        <button class="quick-action" data-note-type="handover"><span>↗</span><strong>引き継ぎ</strong><small>次のスタッフへ</small></button>
+        <button class="quick-action" data-note-type="incident"><span>!</span><strong>気づき・事故</strong><small>事実を記録</small></button>
+        <button class="quick-action" data-note-type="suggestion"><span>✎</span><strong>改善提案</strong><small>一緒につくる</small></button>
+      </div>
+
       <div class="card">
         <h3>迷ったときの基準</h3>
-        <p class="muted" style="margin-bottom:0">分からないまま進めず、一度止まり、確認する。お客様の前で慌てず、静かに情報をつなぐ。</p>
+        <p class="muted no-bottom">分からないまま進めず、一度止まり、確認する。お客様の前で慌てず、静かに情報をつなぐ。</p>
+      </div>
+
+      <div class="section-block" id="favoriteSection">
+        <div class="section-heading"><h2>よく使う項目</h2><button class="text-btn" id="clearFavorites">整理</button></div>
+        <div id="favoriteList"></div>
+      </div>
+      <div class="section-block" id="recentSection">
+        <div class="section-heading"><h2>最近見た項目</h2></div>
+        <div id="recentList"></div>
       </div>
     </section>
 
     <section id="scenes" class="screen">
       <div class="eyebrow">Situations</div>
       <h1>場面別マニュアル</h1>
-      <p class="muted">困っている状況から選び、最初にすることだけを確認します。</p>
+      <p class="muted">困っている状況から選び、最初にすることを確認します。</p>
+      <div class="pill-row" id="sceneFilters"></div>
       <div id="sceneList"></div>
     </section>
 
     <section id="drinks" class="screen">
       <div class="eyebrow">Drinks & Glasses</div>
-      <h1>ドリンク</h1>
-      <input id="drinkSearch" class="search" type="search" placeholder="ドリンク名・グラス名で検索" />
+      <div class="title-row compact-title">
+        <h1>ドリンク・グラス</h1>
+        <button class="icon-btn bordered" id="drinkSearchBtn" aria-label="ドリンク検索">⌕</button>
+      </div>
+      <div class="segmented" id="drinkViewTabs">
+        <button class="active" data-view="drinks">ドリンク</button>
+        <button data-view="glasses">グラス</button>
+      </div>
       <div class="pill-row" id="drinkFilters"></div>
       <div id="drinkList"></div>
-      <div class="card" style="margin-top:20px">
-        <h2>グラス図鑑</h2>
-        <div id="glassList"></div>
-      </div>
+      <div id="glassList" class="hidden"></div>
     </section>
 
     <section id="check" class="screen">
       <div class="eyebrow">Daily Check</div>
-      <h1>チェック</h1>
+      <div class="title-row compact-title">
+        <div><h1>チェック</h1><div class="small muted" id="checkStaffLabel">担当者：未登録</div></div>
+        <button class="secondary small-button" id="profileFromCheck">担当者</button>
+      </div>
       <div class="pill-row" id="checkTabs"></div>
       <div class="card">
-        <div style="display:flex;justify-content:space-between;gap:12px;align-items:end">
+        <div class="card-title-row align-end">
           <div>
-            <h2 id="checkTitle" style="margin-bottom:4px">開店前</h2>
-            <div class="small muted" id="checkProgressText">0／8 完了</div>
+            <h2 id="checkTitle" class="no-bottom">開店前</h2>
+            <div class="small muted" id="checkProgressText">0／0 完了</div>
           </div>
-          <button class="secondary" id="resetChecks">リセット</button>
+          <button class="secondary small-button" id="resetChecks">リセット</button>
         </div>
         <div class="progress"><span id="checkProgressBar"></span></div>
-        <div id="checkList" style="margin-top:10px"></div>
+        <div id="checkList" class="check-list"></div>
       </div>
+      <div class="card success-card hidden" id="checkCompleteCard">
+        <strong>チェック完了</strong>
+        <p class="small no-bottom">必要な項目をすべて確認しました。気づきがあれば引き継ぎメモに残してください。</p>
+      </div>
+      <div class="card">
+        <label for="dailyMemo">この端末だけに残す今日のメモ</label>
+        <textarea id="dailyMemo" placeholder="例：ワイングラス上段を補充、明日確認"></textarea>
+        <div class="small muted" id="dailyMemoSaved">入力内容は自動保存されます。</div>
+      </div>
+      <div class="section-heading"><h2>直近7日</h2></div>
+      <div id="checkHistory"></div>
     </section>
 
     <section id="learn" class="screen">
       <div class="eyebrow">Learning</div>
       <h1>学ぶ</h1>
-      <p class="muted">1日5分。AMORÉTTOの基準を、短く繰り返し確認します。</p>
+      <div class="card learning-summary">
+        <div class="progress-ring" id="learningRing"><span id="learningPercent">0%</span></div>
+        <div><strong id="learningStatus">研修を始めましょう</strong><p class="small muted no-bottom" id="learningSubtext">短く読み、確認問題に答えます。</p></div>
+      </div>
       <div id="lessonList"></div>
+      <button class="suggestion-banner" data-note-type="suggestion"><span>✎</span><span><strong>マニュアル改善の提案</strong><small>分かりにくいところを教えてください</small></span><span>›</span></button>
     </section>
   </main>
 
@@ -116,137 +170,31 @@
   </nav>
 </div>
 
-<div class="modal" id="detailModal">
-  <div class="sheet">
-    <div class="sheet-head">
-      <h2 id="detailTitle" style="margin:0"></h2>
-      <button class="close-btn" data-close>×</button>
+<div class="modal" id="detailModal"><div class="sheet"><div class="sheet-head"><h2 id="detailTitle" class="no-bottom"></h2><button class="close-btn" data-close>×</button></div><div id="detailBody"></div></div></div>
+<div class="modal" id="searchModal"><div class="sheet tall-sheet"><div class="sheet-head"><div><div class="eyebrow">Search</div><h2 class="no-bottom">全体検索</h2></div><button class="close-btn" data-close>×</button></div><input class="search large-search" id="globalSearch" type="search" placeholder="場面・ドリンク・グラス・研修を検索" /><div class="small muted search-hint">例：アレルギー、ワイン、会計、グラス</div><div id="globalSearchResults"></div></div></div>
+<div class="modal" id="profileModal"><div class="sheet"><div class="sheet-head"><div><div class="eyebrow">Profile</div><h2 class="no-bottom">この端末の担当者</h2></div><button class="close-btn" data-close>×</button></div><p class="small muted">名前と役割はこのスマホ内だけに保存されます。メモを送るときだけ名前が添えられます。</p><label for="staffNameInput">名前</label><input class="form-input" id="staffNameInput" maxlength="80" placeholder="例：山田" /><label for="staffRoleInput">役割</label><select class="form-input" id="staffRoleInput"><option value="">未設定</option><option>ホール</option><option>厨房</option><option>研修中</option><option>店主</option><option>その他</option></select><button class="primary" id="saveProfileBtn">この端末に保存</button></div></div>
+<div class="modal" id="noteModal"><div class="sheet"><div class="sheet-head"><div><div class="eyebrow" id="noteEyebrow">Team note</div><h2 class="no-bottom" id="noteModalTitle">改善提案</h2></div><button class="close-btn" data-close>×</button></div><input type="hidden" id="noteType" value="suggestion" /><input type="hidden" id="noteRelatedType" /><input type="hidden" id="noteRelatedId" /><label for="noteTitleInput">件名</label><input class="form-input" id="noteTitleInput" maxlength="160" placeholder="例：白ワインの提供量を写真で確認したい" /><label for="noteBodyInput">内容</label><textarea id="noteBodyInput" maxlength="3000" placeholder="見た事実、困ったこと、提案を分けて書くと伝わりやすくなります。"></textarea><div class="honeypot" aria-hidden="true"><label>Website<input id="noteWebsite" tabindex="-1" autocomplete="off" /></label></div><div class="small muted" id="noteSenderLabel">送信者：匿名</div><button class="primary" id="sendNoteBtn">店主へ送る</button></div></div>
+<div class="modal" id="ownerLoginModal"><div class="sheet compact-sheet"><div class="sheet-head"><div><div class="eyebrow">Owner</div><h2 class="no-bottom">店主ログイン</h2></div><button class="close-btn" data-close>×</button></div><p class="small muted">AI社員オフィスと同じ店主パスワードを使用します。ログイン状態は12時間保持されます。</p><label for="ownerPassword">店主パスワード</label><input class="form-input" id="ownerPassword" type="password" autocomplete="current-password" /><div class="error-text" id="ownerLoginError"></div><button class="primary" id="ownerLoginBtn">ログイン</button></div></div>
+
+<div class="modal fullscreen-modal" id="ownerModal">
+  <div class="owner-shell">
+    <div class="owner-header"><div><div class="eyebrow">Owner mode</div><h2 class="no-bottom">AMORÉTTO STANDARD 管理</h2></div><button class="close-btn" data-close>×</button></div>
+    <div class="admin-tabs" id="adminTabs"><button class="pill active" data-admin-tab="todayAdmin">今日</button><button class="pill" data-admin-tab="sceneAdmin">場面別</button><button class="pill" data-admin-tab="drinkAdmin">ドリンク</button><button class="pill" data-admin-tab="glassAdmin">グラス</button><button class="pill" data-admin-tab="checkAdmin">チェック</button><button class="pill" data-admin-tab="lessonAdmin">学ぶ</button><button class="pill" data-admin-tab="notesAdmin">メモ</button><button class="pill" data-admin-tab="historyAdmin">履歴・設定</button></div>
+    <div class="owner-content">
+      <section class="admin-panel active" id="todayAdmin"><label for="quoteInput">今日の合言葉</label><textarea id="quoteInput"></textarea><label for="noticeInput">店主からの連絡</label><textarea id="noticeInput"></textarea><div class="admin-title-row"><div><h3 class="no-bottom">お知らせ</h3><div class="small muted">期間や重要度を設定できます。</div></div><button class="secondary" data-add-type="announcement">＋追加</button></div><div id="adminAnnouncementList"></div></section>
+      <section class="admin-panel" id="sceneAdmin"><div class="admin-title-row"><div><h3 class="no-bottom">場面別マニュアル</h3><div class="small muted">接客の基準・言葉・確認先を編集します。</div></div><button class="secondary" data-add-type="scene">＋追加</button></div><div id="adminSceneList"></div></section>
+      <section class="admin-panel" id="drinkAdmin"><div class="admin-title-row"><div><h3 class="no-bottom">ドリンク</h3><div class="small muted">分量・手順・写真を編集します。</div></div><button class="secondary" data-add-type="drink">＋追加</button></div><div id="adminDrinkList"></div></section>
+      <section class="admin-panel" id="glassAdmin"><div class="admin-title-row"><div><h3 class="no-bottom">グラス</h3><div class="small muted">用途・保管場所・写真を編集します。</div></div><button class="secondary" data-add-type="glass">＋追加</button></div><div id="adminGlassList"></div></section>
+      <section class="admin-panel" id="checkAdmin"><div class="admin-title-row"><div><h3 class="no-bottom">チェックリスト</h3><div class="small muted">開店前・営業中・閉店後などを編集します。</div></div><button class="secondary" data-add-type="checklist">＋追加</button></div><div id="adminChecklistList"></div></section>
+      <section class="admin-panel" id="lessonAdmin"><div class="admin-title-row"><div><h3 class="no-bottom">研修</h3><div class="small muted">本文と確認問題を編集します。</div></div><button class="secondary" data-add-type="lesson">＋追加</button></div><div id="adminLessonList"></div></section>
+      <section class="admin-panel" id="notesAdmin"><div class="admin-title-row"><div><h3 class="no-bottom">スタッフからのメモ</h3><div class="small muted">引き継ぎ・気づき・改善提案を確認します。</div></div><button class="secondary" id="reloadNotesBtn">更新</button></div><div class="segmented" id="noteAdminFilters"><button class="active" data-note-filter="open">未対応</button><button data-note-filter="resolved">対応済み</button><button data-note-filter="all">すべて</button></div><div id="adminNoteList"></div></section>
+      <section class="admin-panel" id="historyAdmin"><div class="card admin-settings-card"><h3>保存前の確認</h3><label for="changeSummaryInput">今回の変更内容</label><input class="form-input" id="changeSummaryInput" maxlength="300" placeholder="例：ハイボールの分量とグラス写真を更新" /><div class="data-grid"><div><span class="small muted">現在の版</span><strong id="adminRevision">0</strong></div><div><span class="small muted">最終更新</span><strong id="adminUpdatedAt">未保存</strong></div></div></div><div class="admin-title-row"><div><h3 class="no-bottom">更新履歴</h3><div class="small muted">過去30回まで復元できます。</div></div><button class="secondary" id="reloadHistoryBtn">更新</button></div><div id="adminHistoryList"></div><div class="card"><h3>バックアップ</h3><p class="small muted">共有データをJSONで保存・読み込みできます。読み込み後は「全スタッフへ保存」を押すまで公開されません。</p><div class="inline-actions"><button class="secondary" id="exportConfigBtn">書き出す</button><label class="secondary file-label">読み込む<input id="importConfigFile" type="file" accept="application/json" /></label></div></div><div class="card"><h3>アプリ</h3><div class="inline-actions"><button class="secondary" id="shareAppBtn">URLを共有</button><button class="danger-outline" id="ownerLogoutBtn">店主ログアウト</button></div></div></section>
     </div>
-    <div id="detailBody"></div>
+    <div class="save-bar"><div class="small" id="ownerMessage">変更後、「全スタッフへ保存」を押してください。</div><button class="primary compact" id="saveOwnerContent">全スタッフへ保存</button></div>
   </div>
 </div>
-
-<div class="modal" id="ownerModal">
-  <div class="sheet owner-sheet">
-    <div class="sheet-head">
-      <div>
-        <div class="eyebrow">Owner mode</div>
-        <h2 style="margin:0">共有内容を編集</h2>
-      </div>
-      <button class="close-btn" data-close>×</button>
-    </div>
-
-    <div class="password-row">
-      <input class="form-input" id="ownerPassword" type="password" autocomplete="current-password" placeholder="店主パスワード" />
-      <button class="secondary" id="rememberPassword">この間だけ記憶</button>
-    </div>
-    <p class="small muted">保存すると、スタッフ全員のスマホへ同じ内容が反映されます。</p>
-
-    <div class="admin-tabs">
-      <button class="pill active" data-admin-tab="todayAdmin">今日</button>
-      <button class="pill" data-admin-tab="drinkAdmin">ドリンク</button>
-      <button class="pill" data-admin-tab="glassAdmin">グラス</button>
-    </div>
-
-    <section class="admin-panel active" id="todayAdmin">
-      <label for="quoteInput">今日の合言葉</label>
-      <textarea id="quoteInput"></textarea>
-      <label for="noticeInput">店主からの連絡</label>
-      <textarea id="noticeInput"></textarea>
-    </section>
-
-    <section class="admin-panel" id="drinkAdmin">
-      <div class="admin-title-row">
-        <div>
-          <h3 style="margin-bottom:2px">ドリンク登録</h3>
-          <div class="small muted">作り方・使用グラス・写真を登録できます。</div>
-        </div>
-        <button class="secondary" id="addDrinkBtn">＋追加</button>
-      </div>
-      <div id="adminDrinkList"></div>
-    </section>
-
-    <section class="admin-panel" id="glassAdmin">
-      <div class="admin-title-row">
-        <div>
-          <h3 style="margin-bottom:2px">グラス登録</h3>
-          <div class="small muted">用途・保管場所・扱い方を登録できます。</div>
-        </div>
-        <button class="secondary" id="addGlassBtn">＋追加</button>
-      </div>
-      <div id="adminGlassList"></div>
-    </section>
-
-    <div class="save-bar">
-      <div class="small" id="ownerMessage"></div>
-      <button class="primary" id="saveOwnerContent">全スタッフへ保存</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal" id="itemModal">
-  <div class="sheet">
-    <div class="sheet-head">
-      <div>
-        <div class="eyebrow" id="itemEyebrow">Edit</div>
-        <h2 id="itemTitle" style="margin:0">項目を編集</h2>
-      </div>
-      <button class="close-btn" data-close-item>×</button>
-    </div>
-
-    <input id="itemId" type="hidden" />
-    <input id="itemType" type="hidden" />
-    <label for="itemName">名称</label>
-    <input class="form-input" id="itemName" type="text" />
-    <div class="form-grid">
-      <div>
-        <label for="itemIcon">絵文字</label>
-        <input class="form-input" id="itemIcon" type="text" maxlength="4" placeholder="🍷" />
-      </div>
-      <div>
-        <label for="itemImageFile">写真</label>
-        <input class="form-input file-input" id="itemImageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" />
-      </div>
-    </div>
-    <input id="itemImageUrl" type="hidden" />
-    <div id="itemImagePreview" class="image-preview empty-preview">写真なし</div>
-
-    <div id="drinkFields">
-      <label for="itemCategory">分類</label>
-      <input class="form-input" id="itemCategory" type="text" placeholder="ワイン、ビール、カクテルなど" />
-      <label for="itemGlass">使用するグラス</label>
-      <input class="form-input" id="itemGlass" type="text" />
-      <label for="itemIngredients">材料・分量（1行ずつ）</label>
-      <textarea id="itemIngredients"></textarea>
-      <label for="itemSteps">作り方（1行ずつ）</label>
-      <textarea id="itemSteps"></textarea>
-      <label for="itemStandard">仕上がりの基準（1行ずつ）</label>
-      <textarea id="itemStandard"></textarea>
-      <label for="itemNote">注意・補足</label>
-      <textarea id="itemNote"></textarea>
-    </div>
-
-    <div id="glassFields">
-      <label for="itemUse">使用するドリンク</label>
-      <input class="form-input" id="itemUse" type="text" />
-      <label for="itemLocation">保管場所</label>
-      <input class="form-input" id="itemLocation" type="text" />
-      <label for="itemHandling">持ち方・提供方法</label>
-      <textarea id="itemHandling"></textarea>
-      <label for="itemReject">使用しない状態</label>
-      <textarea id="itemReject"></textarea>
-    </div>
-
-    <div class="inline-actions">
-      <button class="danger" id="deleteItem">削除</button>
-      <button class="primary compact" id="saveItem">登録内容に反映</button>
-    </div>
-  </div>
-</div>
-
+<div class="modal" id="adminItemModal"><div class="sheet tall-sheet"><div class="sheet-head"><div><div class="eyebrow" id="adminItemEyebrow">Edit</div><h2 class="no-bottom" id="adminItemTitle">項目を編集</h2></div><button class="close-btn" data-close-admin-item>×</button></div><form id="adminItemForm"><div id="adminDynamicFields"></div></form><div class="inline-actions"><button class="danger" id="deleteAdminItem">削除</button><button class="primary compact" id="saveAdminItem">編集内容を反映</button></div></div></div>
 <div class="toast" id="toast"></div>
-
-<script src="app.js"></script>
-<script src="sw-register.js"></script>
+<script src="app.js"></script><script src="sw-register.js"></script>
 </body>
 </html>

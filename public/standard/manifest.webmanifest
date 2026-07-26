@@ -1,21 +1,23 @@
 {
-  "name": "AMORÉTTO STANDARD",
-  "short_name": "AMORÉTTO",
-  "id": "/standard/index.html",
-  "start_url": "/standard/index.html",
-  "scope": "/standard/",
-  "display": "standalone",
-  "orientation": "portrait-primary",
-  "background_color": "#f4f0e8",
-  "theme_color": "#1f2a26",
-  "lang": "ja-JP",
-  "description": "AMORÉTTOスタッフ向け実務マニュアル",
-  "icons": [
-    {
-      "src": "/standard/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
+  "name":"AMORÉTTO STANDARD",
+  "short_name":"AMORÉTTO",
+  "id":"/standard/index.html",
+  "start_url":"/standard/index.html",
+  "scope":"/standard/",
+  "display":"standalone",
+  "orientation":"portrait-primary",
+  "background_color":"#ffffff",
+  "theme_color":"#1f2a26",
+  "lang":"ja-JP",
+  "description":"AMORÉTTOスタッフ向け実務マニュアル・研修・チェックアプリ",
+  "categories":["business","productivity","education"],
+  "icons":[
+    {"src":"/standard/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"/standard/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},
+    {"src":"/standard/icon-maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}
+  ],
+  "shortcuts":[
+    {"name":"開店前チェック","short_name":"開店前","url":"/standard/index.html#check","icons":[{"src":"/standard/icon-192.png","sizes":"192x192","type":"image/png"}]},
+    {"name":"ドリンクを確認","short_name":"ドリンク","url":"/standard/index.html#drinks","icons":[{"src":"/standard/icon-192.png","sizes":"192x192","type":"image/png"}]}
   ]
 }
