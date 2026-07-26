@@ -1,1 +1,1 @@
-if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/standard/service-worker.js').catch(()=>{}));}
+if("serviceWorker" in navigator){window.addEventListener("load",async()=>{try{const registration=await navigator.serviceWorker.register("/standard/service-worker.js",{updateViaCache:"none"});registration.update();}catch{}});}
