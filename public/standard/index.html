@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1f2a26" />
+  <title>AMORÉTTO STANDARD</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%231f2a26%27/%3E%3Ctext x=%2732%27 y=%2746%27 text-anchor=%27middle%27 font-family=%27serif%27 font-size=%2742%27 fill=%27%23fffdf8%27%3EA%3C/text%3E%3Ccircle cx=%2746%27 cy=%2747%27 r=%272%27 fill=%27%237f2f3d%27/%3E%3C/svg%3E" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="AMORÉTTO" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand-row">
+      <div>
+        <div class="brand">AMORÉTTO STANDARD</div>
+        <div class="tagline">目立たず、押しつけず、外さない。</div>
+      </div>
+      <button class="owner-btn" id="ownerBtn">店主モード</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="today" class="screen active">
+      <div class="eyebrow">Today</div>
+      <h1 id="todayDate"></h1>
+      <div class="card hero">
+        <div class="small muted">今日の合言葉</div>
+        <div class="quote" id="todayQuote">料理だけでなく、お客様が過ごす時間をつくる。</div>
+      </div>
+      <div class="card install-card" id="installCard">
+        <div>
+          <strong>ホーム画面に追加</strong>
+          <div class="small muted" id="installHelp">アプリのようにすぐ開けます。</div>
+        </div>
+        <button class="secondary" id="installBtn">追加する</button>
+      </div>
+      <div class="grid">
+        <div class="metric">
+          <span class="small muted">開店前チェック</span>
+          <strong id="todayCheckCount">0／8</strong>
+        </div>
+        <div class="metric">
+          <span class="small muted">本日の確認事項</span>
+          <strong id="noticeCount">1件</strong>
+        </div>
+      </div>
+      <div class="card notice">
+        <h3>店主からの連絡</h3>
+        <p id="ownerNotice" style="margin-bottom:0">本日の予約内容とアレルギー情報を、営業前に必ず確認してください。</p>
+      </div>
+      <div class="card">
+        <h3>迷ったときの基準</h3>
+        <p class="muted" style="margin-bottom:0">分からないまま進めず、一度止まり、確認する。お客様の前で慌てず、静かに情報をつなぐ。</p>
+      </div>
+    </section>
+
+    <section id="scenes" class="screen">
+      <div class="eyebrow">Situations</div>
+      <h1>場面別マニュアル</h1>
+      <p class="muted">困っている状況から選び、最初にすることだけを確認します。</p>
+      <div id="sceneList"></div>
+    </section>
+
+    <section id="drinks" class="screen">
+      <div class="eyebrow">Drinks & Glasses</div>
+      <h1>ドリンク</h1>
+      <input id="drinkSearch" class="search" type="search" placeholder="ドリンク名・グラス名で検索" />
+      <div class="pill-row" id="drinkFilters"></div>
+      <div id="drinkList"></div>
+      <div class="card" style="margin-top:20px">
+        <h2>グラス図鑑</h2>
+        <div id="glassList"></div>
+      </div>
+    </section>
+
+    <section id="check" class="screen">
+      <div class="eyebrow">Daily Check</div>
+      <h1>チェック</h1>
+      <div class="pill-row" id="checkTabs"></div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:end">
+          <div>
+            <h2 id="checkTitle" style="margin-bottom:4px">開店前</h2>
+            <div class="small muted" id="checkProgressText">0／8 完了</div>
+          </div>
+          <button class="secondary" id="resetChecks">リセット</button>
+        </div>
+        <div class="progress"><span id="checkProgressBar"></span></div>
+        <div id="checkList" style="margin-top:10px"></div>
+      </div>
+    </section>
+
+    <section id="learn" class="screen">
+      <div class="eyebrow">Learning</div>
+      <h1>学ぶ</h1>
+      <p class="muted">1日5分。AMORÉTTOの基準を、短く繰り返し確認します。</p>
+      <div id="lessonList"></div>
+    </section>
+  </main>
+
+  <nav>
+    <button class="nav-btn active" data-screen="today"><span>⌂</span>今日</button>
+    <button class="nav-btn" data-screen="scenes"><span>◫</span>場面別</button>
+    <button class="nav-btn" data-screen="drinks"><span>♢</span>ドリンク</button>
+    <button class="nav-btn" data-screen="check"><span>✓</span>チェック</button>
+    <button class="nav-btn" data-screen="learn"><span>◎</span>学ぶ</button>
+  </nav>
+</div>
+
+<div class="modal" id="detailModal">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="detailTitle" style="margin:0"></h2>
+      <button class="close-btn" data-close>×</button>
+    </div>
+    <div id="detailBody"></div>
+  </div>
+</div>
+
+<div class="modal" id="ownerModal">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div>
+        <div class="eyebrow">Owner mode</div>
+        <h2 style="margin:0">今日の内容を編集</h2>
+      </div>
+      <button class="close-btn" data-close>×</button>
+    </div>
+    <p class="small muted">この試作版では、変更内容はこの端末の中だけに保存されます。</p>
+    <label for="quoteInput">今日の合言葉</label>
+    <textarea id="quoteInput"></textarea>
+    <label for="noticeInput">店主からの連絡</label>
+    <textarea id="noticeInput"></textarea>
+    <button class="primary" id="saveOwnerContent">保存する</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
