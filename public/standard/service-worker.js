@@ -1,4 +1,4 @@
-const CACHE = "amoretto-standard-v3";
+const CACHE = "amoretto-standard-v4";
 const STATIC_ASSETS = [
   "/standard/",
   "/standard/index.html",
@@ -11,7 +11,10 @@ const STATIC_ASSETS = [
   "/standard/admin-bind.js",
   "/standard/sw-register.js",
   "/standard/manifest.webmanifest",
-  "/standard/icon.svg"
+  "/standard/icon.svg",
+  "/standard/icon-192.png",
+  "/standard/icon-512.png",
+  "/standard/icon-maskable-512.png"
 ];
 self.addEventListener("install",(event)=>{event.waitUntil(caches.open(CACHE).then((cache)=>cache.addAll(STATIC_ASSETS)));self.skipWaiting();});
 self.addEventListener("activate",(event)=>{event.waitUntil(caches.keys().then((keys)=>Promise.all(keys.filter((key)=>key!==CACHE).map((key)=>caches.delete(key)))));self.clients.claim();});
