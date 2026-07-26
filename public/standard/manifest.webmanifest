@@ -1,0 +1,21 @@
+{
+  "name": "AMORÉTTO STANDARD",
+  "short_name": "AMORÉTTO",
+  "id": "/standard/index.html",
+  "start_url": "/standard/index.html",
+  "scope": "/standard/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f4f0e8",
+  "theme_color": "#1f2a26",
+  "lang": "ja-JP",
+  "description": "AMORÉTTOスタッフ向け実務マニュアル",
+  "icons": [
+    {
+      "src": "/standard/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
