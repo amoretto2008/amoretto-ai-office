@@ -1,4 +1,4 @@
-const CACHE = "amoretto-standard-v7";
+const CACHE = "amoretto-standard-v8";
 const STATIC_ASSETS = [
   "/standard/",
   "/standard/index.html",
@@ -12,6 +12,9 @@ const STATIC_ASSETS = [
   "/standard/admin-bind.js",
   "/standard/guide.js",
   "/standard/guide-plus.js",
+  "/standard/skills-compat.js",
+  "/standard/skills.js",
+  "/standard/skills-manual-link.js",
   "/standard/sw-register.js",
   "/standard/manifest.webmanifest",
   "/standard/icon.svg",
