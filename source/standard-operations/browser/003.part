@@ -1,0 +1,98 @@
+    return `<div class="ops-prep-grid">${cakeActive?`<div><div class="small"><strong>ケーキ</strong>　${esc(item.cakeStatus)}</div>${renderCheckBox(item,"cake","received","受取済み")}${renderCheckBox(item,"cake","stored","冷蔵保管済み")}${renderCheckBox(item,"cake","candles","ろうそく確認")}${renderCheckBox(item,"cake","platesKnife","皿・ナイフ準備")}</div>`:""}${bouquetActive?`<div><div class="small"><strong>花束</strong>　${esc(item.bouquetStatus)}</div>${renderCheckBox(item,"bouquet","received","受取済み")}${renderCheckBox(item,"bouquet","location","保管場所確認")}${renderCheckBox(item,"bouquet","timing","提供タイミング確認")}</div>`:""}</div>`;
+  }
+
+  function bindReservationPrepChecks(){
+    document.querySelectorAll("[data-ops-res-check]").forEach((input)=>input.addEventListener("change",async()=>{
+      input.disabled=true;
+      try{
+        const data=await staffPatch({action:"reservationCheck",date:input.dataset.reservationDate,reservationId:input.dataset.reservationId,group:input.dataset.group,field:input.dataset.field,checked:input.checked});
+        const index=staffState.reservations.findIndex((item)=>item.id===data.reservation.id);
+        if(index>=0)staffState.reservations[index]=data.reservation;
+        setLocalJson(STAFF_CACHE_KEY,staffState);renderTodayReservations();showToast("準備確認を保存しました");
+      }catch(error){input.checked=!input.checked;input.disabled=false;showToast(error.message||"保存できませんでした");}
+    }));
+  }
+
+  function renderTimeline(){
+    const target=id("todayTimeline");if(!target)return;
+    const settings={...DEFAULT_SETTINGS,...staffState.settings};
+    const reservations=(staffState.reservations||[]).filter(activeReservation);
+    const rows=[];
+    const hasLunch=reservations.some((item)=>(toMinutes(item.time)||0)<15*60);
+    const hasDinner=reservations.some((item)=>(toMinutes(item.time)||0)>=15*60);
+    if(hasLunch)rows.push({time:subtractMinutes(settings.lunchOpen,settings.openingLeadMinutes),title:"ランチ開店準備",sub:"開店前チェックと生鮮品・当日必需品の在庫確認"});
+    if(hasLunch)rows.push({time:subtractMinutes(settings.lunchOpen,30),title:"ランチ予約の最終確認",sub:"アレルギー・記念日・座席"});
+    if(hasDinner)rows.push({time:subtractMinutes(settings.dinnerOpen,settings.openingLeadMinutes),title:"ディナー開店準備",sub:"開店前チェックと生鮮品・当日必需品の在庫確認"});
+    if(hasDinner)rows.push({time:subtractMinutes(settings.dinnerOpen,30),title:"ディナー予約の最終確認",sub:"アレルギー・記念日・座席"});
+    const weekday=new Date(`${staffState.date}T12:00:00`).getDay();
+    if(weekday===0)rows.push({time:subtractMinutes(settings.dinnerOpen,settings.openingLeadMinutes),title:"定期在庫確認",sub:"日曜日・ディナー営業前｜酒類・調味料・消耗品"});
+    if(weekday===4)rows.push({time:subtractMinutes(settings.dinnerOpen,settings.openingLeadMinutes),title:"週末前の在庫確認",sub:"木曜日｜酒類・調味料・消耗品"});
+    reservations.forEach((item)=>{
+      if(item.time)rows.push({time:subtractMinutes(item.time,settings.reservationCheckMinutes),title:`${item.surname}様の予約確認`,sub:`${item.partySize}名｜${item.seat}${item.course?`｜${item.course}`:""}`});
+      if((item.sceneTags||[]).includes("同伴")&&item.departureTime){
+        rows.push({time:subtractMinutes(item.departureTime,settings.companionFoodLeadMinutes),title:`${item.surname}様　料理提供完了目標`,sub:`退店希望 ${item.departureTime}`});
+        rows.push({time:subtractMinutes(item.departureTime,settings.companionPaymentLeadMinutes),title:`${item.surname}様　会計準備`,sub:"時間内に自然にお見送りできるよう整える"});
+      }
+      if(item.anniversary||item.cakeStatus!=="不要"||item.bouquetStatus!=="不要"){
+        rows.push({time:item.time?subtractMinutes(item.time,30):"",title:`${item.surname}様　記念日準備`,sub:"ケーキ・花束・提供タイミングを確認"});
+      }
+    });
+    rows.sort((a,b)=>(toMinutes(a.time)??9999)-(toMinutes(b.time)??9999));
+    if(!rows.length){target.innerHTML='<div class="small muted" style="margin-top:10px">予約登録後、必要な確認が時間順に表示されます。</div>';return;}
+    target.innerHTML=`<div class="ops-timeline">${rows.map((row)=>`<div class="ops-timeline-row"><div class="ops-timeline-time">${esc(row.time||"時刻未定")}</div><div class="ops-timeline-body"><strong>${esc(row.title)}</strong><span class="small muted">${esc(row.sub)}</span></div></div>`).join("")}<div class="ops-timeline-row"><div class="ops-timeline-time">退店後</div><div class="ops-timeline-body"><strong>閉店チェック</strong><span class="small muted">最終退店後に確認</span></div></div></div>`;
+  }
+
+  function renderImportantUpdates(){
+    const card=id("importantUpdateCard"),list=id("importantUpdateList");if(!card||!list)return;
+    const updates=(staffState.updates||[]).filter(roleCanSeeUpdate).filter((item)=>!isAcknowledged(item));
+    card.classList.toggle("hidden",!updates.length);
+    list.innerHTML=updates.map((item)=>`<div class="ops-update"><strong>${esc(item.title)}</strong><p class="small preline">${esc(item.body)}</p>${item.relatedSceneId?`<button class="secondary" data-open-update-scene="${esc(item.relatedSceneId)}">正本を確認</button>`:""}<button class="primary compact" data-ack-update="${esc(item.id)}">確認しました</button></div>`).join("");
+    list.querySelectorAll("[data-open-update-scene]").forEach((button)=>button.addEventListener("click",()=>window.openItem("scene",button.dataset.openUpdateScene)));
+    list.querySelectorAll("[data-ack-update]").forEach((button)=>button.addEventListener("click",async()=>{
+      button.disabled=true;
+      try{
+        const data=await staffPatch({action:"ackUpdate",updateId:button.dataset.ackUpdate});
+        const index=staffState.updates.findIndex((item)=>item.id===data.update.id);if(index>=0)staffState.updates[index]=data.update;
+        renderImportantUpdates();showToast("確認を記録しました");
+      }catch(error){button.disabled=false;showToast(error.message||"確認を保存できませんでした");}
+    }));
+  }
+
+  function renderInventoryAlerts(){
+    const card=id("inventoryAlertCard"),list=id("inventoryAlertList");if(!card||!list)return;
+    const alerts=(staffState.inventoryAlerts||[]).slice().sort((a,b)=>(a.urgency==="至急"?-1:1)-(b.urgency==="至急"?-1:1));
+    card.classList.toggle("hidden",!alerts.length);
+    list.innerHTML=alerts.map((item)=>`<div class="ops-alert"><div class="ops-alert-main"><strong class="${item.urgency==="至急"?"ops-urgent":""}">${item.urgency==="至急"?"至急｜":""}${esc(item.name)}</strong><span class="small muted">${esc(item.status)}${item.currentCount!==null&&item.currentCount!==undefined?`｜現在 ${esc(item.currentCount)}${esc(item.unit||"")}`:""}</span></div><span class="badge ${statusClass(item.status)}">${esc(item.status)}</span></div>`).join("");
+  }
+
+  function renderSceneTagSearch(){
+    const buttons=id("opsSceneTagButtons"),results=id("opsSceneTagResults");if(!buttons||!results)return;
+    buttons.innerHTML=SCENE_TAGS.map((tag)=>`<button class="pill" data-ops-scene-tag="${esc(tag)}">${esc(tag)}</button>`).join("");
+    results.innerHTML='<div class="ops-tag-empty">利用シーンを選んでください。</div>';
+    buttons.querySelectorAll("[data-ops-scene-tag]").forEach((button)=>button.addEventListener("click",()=>{
+      buttons.querySelectorAll("button").forEach((item)=>item.classList.toggle("active",item===button));
+      const tag=button.dataset.opsSceneTag;
+      const scenes=activeItems(config.scenes).filter((scene)=>(staffState.manualMeta?.[scene.id]?.sceneTags||[]).includes(tag));
+      results.innerHTML=scenes.length?scenes.map((scene)=>`<button class="list-button" onclick="openItem('scene','${esc(scene.id)}')"><span class="list-main"><span class="lesson-status">◫</span><span class="list-copy"><strong>${esc(scene.title)}</strong><span class="small muted">${esc(scene.lead)}</span></span></span><span class="arrow">›</span></button>`).join(""):`<div class="ops-tag-empty">「${esc(tag)}」の正本はまだ割り当てられていません。</div>`;
+    }));
+  }
+
+  function renderStaffInventoryModal(){
+    const list=id("staffInventoryList"),search=id("staffInventorySearch");if(!list)return;
+    const source=(ownerState?.inventory||[]).length?ownerState.inventory:(staffState.inventory||staffState.inventoryAlerts||[]);
+    const query=String(search?.value||"").trim().toLowerCase();
+    const items=source.filter((item)=>!query||`${item.name} ${item.category}`.toLowerCase().includes(query));
+    list.innerHTML=items.length?items.map((item)=>`<div class="ops-owner-item"><div class="ops-inventory-row"><div><strong>${esc(item.name)}</strong><div class="small muted">${esc(item.category||"")}｜${esc(item.status||"足りる")}</div></div><span class="badge ${item.urgency==="至急"?"danger":statusClass(item.status)}">${esc(item.urgency||"通常")}</span></div>${item.supplier||item.orderMethod||item.contact?`<div class="ops-note"><strong>購入先</strong>　${esc(item.supplier||"未登録")}${item.orderMethod?`｜${esc(item.orderMethod)}`:""}${item.contact?`｜${esc(item.contact)}`:""}${item.orderDeadline?`<br><span class="small muted">発注期限：${esc(item.orderDeadline)}${item.leadDays!==null&&item.leadDays!==undefined?`｜標準入荷 ${esc(item.leadDays)}日`:""}</span>`:""}${item.orderNote?`<br><span class="small muted">${esc(item.orderNote)}</span>`:""}</div>`:""}<div class="ops-stock-fields"><label>現在数<input class="form-input" type="number" min="0" step="0.01" data-staff-stock-count="${esc(item.id)}" value="${item.currentCount??""}"></label><label>入荷確認数<input class="form-input" type="number" min="0" step="0.01" data-staff-stock-arrival="${esc(item.id)}" value="${item.arrivalReportedCount??""}" placeholder="入荷時のみ"></label><label class="ops-checkbox-label"><input type="checkbox" data-staff-stock-need="${esc(item.id)}" ${item.status==="発注必要"?"checked":""}>発注必要</label><label class="ops-checkbox-label"><input type="checkbox" data-staff-stock-urgent="${esc(item.id)}" ${item.urgency==="至急"?"checked":""}>至急</label></div><button class="secondary" style="width:100%;margin-top:8px" data-save-staff-stock="${esc(item.id)}">確認を保存</button></div>`).join(""):'<div class="empty">該当する在庫がありません。</div>';
+    list.querySelectorAll("[data-save-staff-stock]").forEach((button)=>button.addEventListener("click",async()=>{
+      const stockId=button.dataset.saveStaffStock;
+      const countInput=list.querySelector(`[data-staff-stock-count="${stockId}"]`);
+      const arrivalInput=list.querySelector(`[data-staff-stock-arrival="${stockId}"]`);
+      const need=list.querySelector(`[data-staff-stock-need="${stockId}"]`);
+      const urgent=list.querySelector(`[data-staff-stock-urgent="${stockId}"]`);
+      const value=countInput.value===""?null:Number(countInput.value);
+      const arrivalValue=arrivalInput.value===""?null:Number(arrivalInput.value);
+      button.disabled=true;
+      try{
+        const data=await staffPatch({action:"inventoryReport",inventoryId:stockId,currentCount:value,arrivalReportedCount:arrivalValue,needsOrder:need.checked,urgency:urgent.checked?"至急":"通常"});
+        const allIndex=(staffState.inventory||[]).findIndex((item)=>item.id===stockId);if(allIndex>=0)staffState.inventory[allIndex]=data.item;
+        const stateIndex=staffState.inventoryAlerts.findIndex((item)=>item.id===stockId);
