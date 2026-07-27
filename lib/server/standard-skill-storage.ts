@@ -12,33 +12,21 @@ function requireSupabase() {
   return supabase;
 }
 
-async function ensureBucket() {
-  const supabase = requireSupabase();
-  const { data, error } = await supabase.storage.listBuckets();
-  if (error) throw new Error("保存先の確認に失敗しました。");
-  if (data?.some((bucket) => bucket.name === BUCKET)) return;
-  const { error: createError } = await supabase.storage.createBucket(BUCKET, {
-    public: false,
-    fileSizeLimit: 2 * 1024 * 1024,
-    allowedMimeTypes: ["application/json"],
-  });
-  if (createError && !createError.message.toLowerCase().includes("already exists")) {
-    throw new Error("保存先の作成に失敗しました。");
-  }
-}
-
 function safeStaffId(value: string) {
   if (!/^staff-[a-f0-9-]{36}$/i.test(value)) throw new Error("スタッフ識別子が正しくありません。");
   return value;
 }
 
+function isMissingObject(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes("not found") || normalized.includes("object not found");
+}
+
 async function readJson(path: string): Promise<JsonRecord | null> {
   const supabase = requireSupabase();
-  await ensureBucket();
   const { data, error } = await supabase.storage.from(BUCKET).download(path);
   if (error) {
-    const message = error.message.toLowerCase();
-    if (message.includes("not found") || message.includes("object not found")) return null;
+    if (isMissingObject(error.message)) return null;
     throw new Error("スキル情報の読み込みに失敗しました。");
   }
   try {
@@ -50,7 +38,6 @@ async function readJson(path: string): Promise<JsonRecord | null> {
 
 async function writeJson(path: string, value: unknown) {
   const supabase = requireSupabase();
-  await ensureBucket();
   const body = Buffer.from(JSON.stringify(value, null, 2), "utf8");
   const { error } = await supabase.storage.from(BUCKET).upload(path, body, {
     contentType: "application/json",
@@ -62,7 +49,6 @@ async function writeJson(path: string, value: unknown) {
 
 async function listFiles(limit = MAX_PROFILES) {
   const supabase = requireSupabase();
-  await ensureBucket();
   const { data, error } = await supabase.storage.from(BUCKET).list(PREFIX, {
     limit,
     sortBy: { column: "created_at", order: "asc" },
@@ -98,7 +84,6 @@ export async function listStandardSkillProfiles() {
 export async function deleteStandardSkillProfile(staffId: string) {
   const clean = safeStaffId(staffId);
   const supabase = requireSupabase();
-  await ensureBucket();
   const { error } = await supabase.storage.from(BUCKET).remove([`${PREFIX}/${clean}.json`]);
   if (error) throw new Error("スタッフのスキル情報を削除できませんでした。");
   return { staffId: clean };
