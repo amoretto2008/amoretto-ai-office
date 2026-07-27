@@ -1,0 +1,96 @@
+(function(){
+  "use strict";
+
+  const API_URL="/api/standard/operations";
+  const IDENTITY_KEY="amoretto-standard-skill-identity";
+  const STAFF_CACHE_KEY="amoretto-standard-operations-cache";
+  const SCENE_TAGS=["初来店","常連","ランチ","ディナー","記念日","接待","家族利用","子ども連れ","ワイン","アレルギー","同伴"];
+  const SEATS=["S席1","S席2","S席3","S席4","A席2","B席4","C席4","A席＋B席8"];
+  const BOOKING_STATUSES=["予約済","来店済","キャンセル","無断キャンセル","日時変更"];
+  const BOOKING_CHANNELS=["電話","公式予約フォーム","メール","LINE","Instagram","来店時","紹介","その他"];
+  const PREP_STATUSES=["未確認","購入必要","購入済み","お客様持込み","不要"];
+  const INVENTORY_STATUSES=["足りる","発注必要","注文済み","入荷待ち","入荷完了"];
+  const URGENCIES=["通常","至急"];
+  const OWNER_LEVELS=["スタッフ判断","営業中に報告","対応前に店主確認","最優先で店主を呼ぶ"];
+  const DEFAULT_SETTINGS={lunchOpen:"11:30",dinnerOpen:"17:00",openingLeadMinutes:90,reservationCheckMinutes:30,companionFoodLeadMinutes:20,companionPaymentLeadMinutes:10,retentionYears:5};
+
+  let staffState={date:todayKey(),settings:{...DEFAULT_SETTINGS},reservations:[],inventory:[],inventoryAlerts:[],manualMeta:{},updates:[]};
+  let ownerState=null;
+  let ownerView="reservations";
+  let editingReservationId="";
+  let editingReservationYear="";
+  let editingInventoryId="";
+  let editingSceneId="";
+  let editingUpdateId="";
+  let linkedCustomerKey="";
+
+  const id=(value)=>document.getElementById(value);
+  const deepClone=(value)=>JSON.parse(JSON.stringify(value));
+  const toLines=(value)=>String(value||"").split("\n").map((item)=>item.trim()).filter(Boolean);
+  const normalizePhone=(value)=>String(value||"").replace(/\D/g,"").slice(0,30);
+  const makeId=(prefix)=>`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+  const currentProfile=()=>localJson("amoretto-standard-profile",{name:"",role:""});
+
+  function randomId(){
+    if(window.crypto?.randomUUID)return window.crypto.randomUUID();
+    return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`.padEnd(36,"0").slice(0,36);
+  }
+
+  function identity(){
+    let value=localJson(IDENTITY_KEY,null);
+    if(!value||!String(value.staffId||"").startsWith("staff-")||String(value.token||"").length<40){
+      value={staffId:`staff-${randomId()}`,token:`${randomId()}${randomId()}`};
+      setLocalJson(IDENTITY_KEY,value);
+    }
+    return value;
+  }
+
+  function formatTime(value){return value||"未設定";}
+  function formatShortDate(value){
+    if(!value)return "";
+    try{return new Intl.DateTimeFormat("ja-JP",{month:"numeric",day:"numeric",weekday:"short"}).format(new Date(`${value}T00:00:00`));}catch{return value;}
+  }
+  function addDays(dateText,days){const date=new Date(`${dateText}T12:00:00`);date.setDate(date.getDate()+days);return todayKey(date);}
+  function toMinutes(value){if(!value||!/^\d{2}:\d{2}$/.test(value))return null;const [h,m]=value.split(":").map(Number);return h*60+m;}
+  function fromMinutes(value){let total=((value%1440)+1440)%1440;return `${String(Math.floor(total/60)).padStart(2,"0")}:${String(total%60).padStart(2,"0")}`;}
+  function subtractMinutes(value,amount){const total=toMinutes(value);return total===null?"":fromMinutes(total-amount);}
+  function reservationYear(reservation){return String(reservation.date||"").slice(0,4);}
+  function allOwnerReservations(){
+    if(!ownerState?.reservations)return [];
+    return Object.values(ownerState.reservations).flatMap((list)=>Array.isArray(list)?list:[]);
+  }
+  function activeReservation(item){return !["キャンセル","無断キャンセル","日時変更"].includes(item.bookingStatus);}
+  function reservationSummary(item){
+    const parts=[`${item.time||"時刻未定"} ${item.surname||item.fullName||"名称未登録"}様`,`${item.partySize||0}名`,item.seat,item.course].filter(Boolean);
+    return parts.join("｜");
+  }
+  function statusClass(status){return status==="発注必要"||status==="未確認"||status==="購入必要"?"warn":status==="注文済み"||status==="入荷待ち"?"info":"";}
+  function roleCanSeeUpdate(update){
+    const role=currentProfile().role||"";
+    return update.scope==="全員"||update.scope===role||(update.scope==="ホール"&&role==="研修中")||(update.scope==="焼き台責任者"&&role==="厨房");
+  }
+  function isAcknowledged(update){return (update.acknowledgements||[]).some((entry)=>entry.staffId===identity().staffId);}
+
+  function injectStyles(){
+    if(id("operationsStyles"))return;
+    const style=document.createElement("style");style.id="operationsStyles";
+    style.textContent=`
+      .operations-card{border-left:4px solid var(--accent)}.ops-card-title{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.ops-card-title h3{margin:0}.ops-count{font-size:11px;color:var(--muted)}.ops-reservation{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:9px;background:white}.ops-reservation-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.ops-reservation strong{font-size:15px}.ops-meta{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.ops-meta .badge{font-size:9px}.ops-important{background:#fff5e4;border-color:#ead3a2}.ops-danger{background:#fff0ee;border-color:#e1b8b2}.ops-note{white-space:pre-line;margin:8px 0 0;font-size:12px}.ops-timeline{display:grid;gap:7px;margin-top:10px}.ops-timeline-row{display:grid;grid-template-columns:54px 1fr;gap:9px;align-items:start}.ops-timeline-time{font-weight:800;font-size:12px;padding-top:3px}.ops-timeline-body{border-left:2px solid var(--line);padding:2px 0 9px 11px}.ops-timeline-body strong,.ops-timeline-body span{display:block}.ops-prep-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.ops-check{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:10px;padding:8px;background:white;font-size:11px}.ops-check input{width:18px;height:18px}.ops-update{border:1px solid #e0c4aa;background:#fff8ee;border-radius:14px;padding:12px;margin-top:9px}.ops-update button{width:100%;margin-top:9px}.ops-alert{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:9px 0}.ops-alert:last-child{border-bottom:0}.ops-alert-main strong,.ops-alert-main span{display:block}.ops-urgent{color:var(--danger);font-weight:800}.ops-scene-tags{margin-bottom:14px}.ops-tag-results{margin-top:10px}.ops-tag-empty{font-size:12px;color:var(--muted);padding:8px 0}
+      .ops-owner-nav{margin-bottom:14px}.ops-owner-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.ops-owner-toolbar>*{flex:1;min-width:120px}.ops-owner-list{display:grid;gap:9px}.ops-owner-item{border:1px solid var(--line);background:white;border-radius:14px;padding:12px}.ops-owner-item-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.ops-owner-item-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.ops-owner-item-actions button{font-size:10px;padding:7px 9px}.ops-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.ops-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.ops-form-section{border-top:1px solid var(--line);padding-top:14px;margin-top:14px}.ops-form-section h3{margin-top:0}.ops-checkbox-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.ops-checkbox-label{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:10px;padding:8px;font-size:11px}.ops-checkbox-label input{width:17px;height:17px}.ops-past-box{background:#f7f3ed;border-radius:13px;padding:11px;margin-top:10px;font-size:11px}.ops-past-entry{border-top:1px solid #ded5ca;padding-top:8px;margin-top:8px}.ops-owner-status{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}.ops-owner-status>div{background:#f7f3ed;border-radius:11px;padding:9px;text-align:center}.ops-owner-status strong,.ops-owner-status span{display:block}.ops-owner-status span{font-size:9px;color:var(--muted)}.ops-section-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:18px 0 8px}.ops-section-title h3{margin:0}.ops-inventory-row{display:grid;grid-template-columns:1fr auto;gap:9px;align-items:center}.ops-stock-fields{display:grid;grid-template-columns:90px 1fr 1fr;gap:7px;margin-top:8px}.ops-review-due{border-left:4px solid var(--warning)}.ops-manual-meta{margin-top:16px}.ops-manual-block{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}.ops-manual-block h3{margin:0 0 7px}.ops-related-buttons{display:grid;gap:7px}.ops-related-buttons button{text-align:left}.ops-owner-full{z-index:180}.ops-staff-modal{z-index:175}.ops-download-note{font-size:10px;color:var(--muted);margin-top:8px}.ops-privacy{background:#f7f3ed;border-radius:12px;padding:11px;font-size:11px}.ops-inline-select{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.ops-inline-select select{flex:1;min-width:140px}.ops-hidden{display:none!important}
+      @media(max-width:480px){.ops-grid-2,.ops-grid-3,.ops-checkbox-grid{grid-template-columns:1fr}.ops-prep-grid{grid-template-columns:1fr}.ops-owner-status{grid-template-columns:1fr 1fr}.ops-stock-fields{grid-template-columns:1fr 1fr}.ops-stock-fields>*:first-child{grid-column:1/-1}.ops-owner-toolbar>*{min-width:100%}.ops-reservation-top{display:block}.ops-reservation-top .badge{margin-top:5px}}
+    `;
+    document.head.appendChild(style);
+  }
+
+  function injectStaffUI(){
+    const today=id("today");
+    if(today&&!id("operationsTodayBlock")){
+      const anchor=id("announcementList");
+      anchor?.insertAdjacentHTML("afterend",`<div id="operationsTodayBlock"><div class="card operations-card" id="todayReservationsCard"><div class="ops-card-title"><div><div class="eyebrow">Service board</div><h3>本日の営業</h3></div><span class="ops-count" id="todayReservationCount">確認中</span></div><div id="todayReservationList"><div class="small muted">営業情報を確認しています。</div></div></div><div class="card" id="todayTimelineCard"><div class="ops-card-title"><h3>営業タイムライン</h3><span class="ops-count">今すること</span></div><div id="todayTimeline"></div></div><div class="card hidden" id="importantUpdateCard"><div class="ops-card-title"><h3>重要な基準変更</h3><span class="badge warn">確認必須</span></div><div id="importantUpdateList"></div></div><div class="card hidden" id="inventoryAlertCard"><div class="ops-card-title"><h3>在庫確認</h3><button class="secondary small-button" id="openStaffInventoryBtn">確認する</button></div><div id="inventoryAlertList"></div></div></div>`);
+    }
+    const scenes=id("scenes");
+    if(scenes&&!id("sceneTagCard")){
+      const filters=id("sceneFilters");
+      filters?.insertAdjacentHTML("beforebegin",`<div class="card ops-scene-tags" id="sceneTagCard"><div class="ops-card-title"><div><h3>利用シーンから探す</h3><div class="small muted">営業場面に合わせて正本を絞ります。</div></div></div><div class="pill-row" id="opsSceneTagButtons"></div><div class="ops-tag-results" id="opsSceneTagResults"></div></div>`);
+    }
+    if(!id("staffInventoryModal")){
