@@ -1,0 +1,30 @@
+      const central=new Uint8Array(46+nameBytes.length);const cv=new DataView(central.buffer);write32(cv,0,0x02014b50);write16(cv,4,20);write16(cv,6,20);write16(cv,8,0x0800);write16(cv,10,0);write16(cv,12,0);write16(cv,14,0);write32(cv,16,crc);write32(cv,20,data.length);write32(cv,24,data.length);write16(cv,28,nameBytes.length);write16(cv,30,0);write16(cv,32,0);write16(cv,34,0);write16(cv,36,0);write32(cv,38,0);write32(cv,42,offset);central.set(nameBytes,46);centrals.push(central);offset+=local.length+data.length;
+    });
+    const centralBytes=concatBytes(centrals);const end=new Uint8Array(22);const ev=new DataView(end.buffer);write32(ev,0,0x06054b50);write16(ev,4,0);write16(ev,6,0);write16(ev,8,centrals.length);write16(ev,10,centrals.length);write32(ev,12,centralBytes.length);write32(ev,16,offset);write16(ev,20,0);return concatBytes([...locals,centralBytes,end]);
+  }
+
+  function bindGlobalEvents(){
+    id("openStaffInventoryBtn")?.addEventListener("click",()=>{renderStaffInventoryModal();openModal("staffInventoryModal");});
+    id("closeStaffInventoryBtn")?.addEventListener("click",()=>closeModal("staffInventoryModal"));
+    id("staffInventoryModal")?.addEventListener("click",(event)=>{if(event.target.id==="staffInventoryModal")closeModal("staffInventoryModal");});
+    id("staffInventorySearch")?.addEventListener("input",renderStaffInventoryModal);
+    id("syncBtn")?.addEventListener("click",()=>setTimeout(()=>loadStaffData({quiet:true}),100));
+    id("saveProfileBtn")?.addEventListener("click",()=>setTimeout(()=>loadStaffData({quiet:true}),1200));
+    window.addEventListener("online",()=>loadStaffData({quiet:true}));
+  }
+
+  function patchManualDetails(){
+    const original=window.openItem;if(typeof original!=="function"||original.__opsPatched)return;
+    const wrapped=function(type,itemId){original(type,itemId);if(type==="scene")setTimeout(()=>appendManualMeta(itemId),0);};
+    wrapped.__opsPatched=true;window.openItem=wrapped;
+    window.refreshCurrentDetail=(type,itemId)=>window.openItem(type,itemId);
+  }
+
+  function start(){
+    injectStyles();injectStaffUI();injectOwnerUI();bindGlobalEvents();patchManualDetails();
+    const cached=localJson(STAFF_CACHE_KEY,null);if(cached)staffState={...staffState,...cached,settings:{...DEFAULT_SETTINGS,...(cached.settings||{})}};
+    renderStaffOperations();loadStaffData({quiet:true});
+  }
+
+  start();
+})();

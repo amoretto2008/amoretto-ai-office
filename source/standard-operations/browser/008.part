@@ -1,0 +1,71 @@
+    body.innerHTML=`<div class="card"><h3>営業タイムライン</h3><div class="ops-grid-2"><label>ランチ開店<input class="form-input" id="opsSettingLunch" type="time" value="${esc(s.lunchOpen)}"></label><label>ディナー開店<input class="form-input" id="opsSettingDinner" type="time" value="${esc(s.dinnerOpen)}"></label><label>開店準備（何分前）<input class="form-input" id="opsSettingOpeningLead" type="number" min="0" value="${esc(s.openingLeadMinutes)}"></label><label>予約再確認（何分前）<input class="form-input" id="opsSettingReservationLead" type="number" min="0" value="${esc(s.reservationCheckMinutes)}"></label><label>同伴・料理完了（退店何分前）<input class="form-input" id="opsSettingFoodLead" type="number" min="0" value="${esc(s.companionFoodLeadMinutes)}"></label><label>同伴・会計準備（退店何分前）<input class="form-input" id="opsSettingPaymentLead" type="number" min="0" value="${esc(s.companionPaymentLeadMinutes)}"></label></div><button class="primary" id="saveOperationsSettingsBtn">設定を保存</button></div><div class="card"><h3>Excel出力</h3><p class="small muted">営業履歴はSTANDARD内に5年間保存し、年度別または最大5年分をExcelへ出力します。</p><div class="ops-inline-select"><select class="form-input" id="opsExportRange"><option value="five">直近5年分</option>${availableYears.map((year)=>`<option value="${year}">${year}年</option>`).join("")}</select><button class="secondary" id="exportOperationsExcelBtn">Excelを書き出す</button></div><div class="ops-download-note">氏名・電話番号・メールアドレスを含むため、店主だけが安全な場所へ保存してください。</div></div><div class="card"><h3>5年経過後の履歴</h3>${oldYears.length?`<p class="small muted">Excel保存を確認した年だけ削除してください。</p>${oldYears.map((year)=>`<div class="ops-alert"><div class="ops-alert-main"><strong>${year}年</strong><span class="small muted">${(ownerState.reservations[String(year)]||[]).length}件</span></div><button class="danger-outline small-button" data-delete-year="${year}">Excel確認後に削除</button></div>`).join("")}`:'<div class="small muted">削除対象の履歴はありません。</div>'}</div><div class="card"><h3>お客様情報の案内文</h3><div class="ops-privacy">ご予約およびご来店時の対応、アレルギー確認、サービス向上のため、必要な範囲でお客様情報とご来店履歴を保存します。情報は適切に管理し、店舗運営以外の目的には使用しません。</div><p class="small muted no-bottom">スタッフ画面には名字と当日の営業に必要な情報だけを表示し、電話番号・メールアドレス・過去履歴は表示しません。</p></div>`;
+    id("saveOperationsSettingsBtn").addEventListener("click",saveOperationsSettings);
+    id("exportOperationsExcelBtn").addEventListener("click",exportOperationsExcel);
+    body.querySelectorAll("[data-delete-year]").forEach((button)=>button.addEventListener("click",()=>deleteOldYear(Number(button.dataset.deleteYear))));
+  }
+
+  async function saveOperationsSettings(){
+    const settings={lunchOpen:id("opsSettingLunch").value,dinnerOpen:id("opsSettingDinner").value,openingLeadMinutes:Number(id("opsSettingOpeningLead").value),reservationCheckMinutes:Number(id("opsSettingReservationLead").value),companionFoodLeadMinutes:Number(id("opsSettingFoodLead").value),companionPaymentLeadMinutes:Number(id("opsSettingPaymentLead").value),retentionYears:5,updatedAt:ownerState.settings?.updatedAt||""};
+    try{const data=await ownerSave({action:"saveSettings",settings},"営業設定を保存しました");ownerState.settings=data.settings;staffState.settings=data.settings;renderTimeline();}catch(error){showToast(error.message||"設定を保存できませんでした");}
+  }
+
+  async function deleteOldYear(year){
+    if(!confirm(`${year}年のExcel保存を確認しましたか。STANDARD内の履歴を削除します。`))return;
+    try{await ownerSave({action:"deleteYear",year,exportConfirmed:true});delete ownerState.reservations[String(year)];renderOwnerPanel();showToast(`${year}年の履歴を削除しました`);}catch(error){showToast(error.message||"履歴を削除できませんでした");}
+  }
+
+  function exportRows(range){
+    const currentYear=new Date().getFullYear();
+    let rows=allOwnerReservations();
+    if(range==="five")rows=rows.filter((item)=>Number(String(item.date).slice(0,4))>=currentYear-4&&Number(String(item.date).slice(0,4))<=currentYear);
+    else rows=rows.filter((item)=>String(item.date).startsWith(`${range}-`));
+    rows.sort((a,b)=>`${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    const headers=["営業日","予約時間","氏名","人数","座席","コース","記念日・ケーキ・花束","アレルギー・苦手食材","電話番号","メールアドレス","店主の引き継ぎ事項","予約状態","予約経路"];
+    const data=rows.map((item)=>[
+      item.date,item.time,item.fullName,item.partySize,item.seat,item.course,
+      [item.anniversary,item.cakeStatus?`ケーキ：${item.cakeStatus}`:"",item.bouquetStatus?`花束：${item.bouquetStatus}`:""].filter(Boolean).join("／"),
+      [item.allergies?`アレルギー：${item.allergies}${item.allergiesConfirmed?'（確認済み）':'（未確認）'}`:"",item.dislikes?`苦手：${item.dislikes}`:""].filter(Boolean).join("／"),
+      item.phone,item.email,item.ownerHandover,item.bookingStatus,item.bookingChannel
+    ]);
+    return [headers,...data];
+  }
+
+  function exportOperationsExcel(){
+    try{
+      const range=id("opsExportRange").value;const rows=exportRows(range);
+      if(rows.length<=1)throw new Error("出力する営業履歴がありません。");
+      const blob=makeXlsx(rows,"営業履歴");
+      const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=range==="five"?`AMORETTO_営業履歴_${new Date().getFullYear()-4}-${new Date().getFullYear()}.xlsx`:`AMORETTO_営業履歴_${range}.xlsx`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);showToast("Excelを書き出しました");
+    }catch(error){showToast(error.message||"Excelを書き出せませんでした");}
+  }
+
+  function xmlEscape(value){return String(value??"").replace(/[&<>"']/g,(char)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[char]));}
+  function columnName(index){let value=index+1,name="";while(value){value--;name=String.fromCharCode(65+(value%26))+name;value=Math.floor(value/26);}return name;}
+  function worksheetXml(rows){
+    const rowXml=rows.map((row,rowIndex)=>`<row r="${rowIndex+1}">${row.map((value,colIndex)=>{const ref=`${columnName(colIndex)}${rowIndex+1}`;return `<c r="${ref}" t="inlineStr"${rowIndex===0?' s="1"':''}><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;}).join("")}</row>`).join("");
+    const last=`${columnName(Math.max(0,rows[0].length-1))}${rows.length}`;
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${last}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${rows[0].map((_,index)=>`<col min="${index+1}" max="${index+1}" width="${index===6||index===7||index===10?32:index===2?18:14}" customWidth="1"/>`).join("")}</cols><sheetData>${rowXml}</sheetData><autoFilter ref="A1:${columnName(rows[0].length-1)}1"/></worksheet>`;
+  }
+
+  function makeXlsx(rows,sheetName){
+    const files={
+      "[Content_Types].xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`,
+      "_rels/.rels":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+      "xl/workbook.xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xmlEscape(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+      "xl/_rels/workbook.xml.rels":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+      "xl/styles.xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Aptos"/></font><font><b/><sz val="11"/><name val="Aptos"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`,
+      "xl/worksheets/sheet1.xml":worksheetXml(rows)
+    };
+    return new Blob([zipStore(files)],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  }
+
+  const CRC_TABLE=(()=>{const table=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?0xedb88320^(c>>>1):c>>>1;table[n]=c>>>0;}return table;})();
+  function crc32(bytes){let crc=0xffffffff;for(const byte of bytes)crc=CRC_TABLE[(crc^byte)&0xff]^(crc>>>8);return (crc^0xffffffff)>>>0;}
+  function write16(view,offset,value){view.setUint16(offset,value,true);}
+  function write32(view,offset,value){view.setUint32(offset,value>>>0,true);}
+  function concatBytes(parts){const total=parts.reduce((sum,part)=>sum+part.length,0);const out=new Uint8Array(total);let offset=0;parts.forEach((part)=>{out.set(part,offset);offset+=part.length;});return out;}
+  function zipStore(files){
+    const encoder=new TextEncoder();const locals=[],centrals=[];let offset=0;
+    Object.entries(files).forEach(([name,text])=>{
+      const nameBytes=encoder.encode(name),data=encoder.encode(text),crc=crc32(data);
+      const local=new Uint8Array(30+nameBytes.length);const lv=new DataView(local.buffer);write32(lv,0,0x04034b50);write16(lv,4,20);write16(lv,6,0x0800);write16(lv,8,0);write16(lv,10,0);write16(lv,12,0);write32(lv,14,crc);write32(lv,18,data.length);write32(lv,22,data.length);write16(lv,26,nameBytes.length);write16(lv,28,0);local.set(nameBytes,30);locals.push(local,data);

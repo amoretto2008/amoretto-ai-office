@@ -1,0 +1,132 @@
+      document.body.insertAdjacentHTML("beforeend",`<div class="modal ops-staff-modal" id="staffInventoryModal"><div class="sheet tall-sheet"><div class="sheet-head"><div><div class="eyebrow">Inventory check</div><h2 class="no-bottom">在庫を確認</h2></div><button class="close-btn" id="closeStaffInventoryBtn">×</button></div><p class="small muted">現在数と不足を記録します。発注の判断・注文は店主が行います。</p><input class="search" id="staffInventorySearch" type="search" placeholder="在庫名を検索" /><div id="staffInventoryList"></div></div></div>`);
+    }
+  }
+
+  function injectOwnerUI(){
+    const tabs=id("adminTabs"),content=document.querySelector(".owner-content");
+    if(!tabs||!content||id("operationsAdmin"))return;
+    const todayTab=tabs.querySelector('[data-admin-tab="todayAdmin"]');
+    const tab=document.createElement("button");tab.className="pill";tab.dataset.adminTab="operationsAdmin";tab.textContent="営業";
+    if(todayTab?.nextSibling)tabs.insertBefore(tab,todayTab.nextSibling);else tabs.appendChild(tab);
+    const panel=document.createElement("section");panel.className="admin-panel";panel.id="operationsAdmin";panel.innerHTML=`<div class="admin-title-row"><div><h3 class="no-bottom">営業・顧客・在庫</h3><div class="small muted">当日の営業情報と5年間の履歴を店主だけが管理します。</div></div><button class="secondary" id="reloadOperationsBtn">更新</button></div><div class="segmented ops-owner-nav" id="operationsOwnerNav"><button class="active" data-ops-owner-view="reservations">予約</button><button data-ops-owner-view="inventory">在庫</button><button data-ops-owner-view="manual">正本強化</button><button data-ops-owner-view="updates">重要改訂</button><button data-ops-owner-view="settings">設定・Excel</button></div><div id="operationsOwnerBody"><div class="empty">「営業」を開くと最新情報を読み込みます。</div></div>`;
+    content.insertBefore(panel,id("sceneAdmin"));
+    tab.addEventListener("click",()=>{
+      document.querySelectorAll(".admin-tabs .pill").forEach((button)=>button.classList.toggle("active",button===tab));
+      document.querySelectorAll(".admin-panel").forEach((item)=>item.classList.toggle("active",item.id==="operationsAdmin"));
+      loadOwnerData();
+    });
+    id("reloadOperationsBtn").addEventListener("click",loadOwnerData);
+    id("operationsOwnerNav").addEventListener("click",(event)=>{
+      const button=event.target.closest("[data-ops-owner-view]");if(!button)return;
+      ownerView=button.dataset.opsOwnerView;
+      id("operationsOwnerNav").querySelectorAll("button").forEach((item)=>item.classList.toggle("active",item===button));
+      renderOwnerPanel();
+    });
+    injectOwnerModals();
+  }
+
+  function injectOwnerModals(){
+    if(id("opsReservationModal"))return;
+    document.body.insertAdjacentHTML("beforeend",`
+      <div class="modal ops-owner-full" id="opsReservationModal"><div class="sheet tall-sheet"><div class="sheet-head"><div><div class="eyebrow">Reservation</div><h2 class="no-bottom" id="opsReservationTitle">予約を登録</h2></div><button class="close-btn" data-close-ops="opsReservationModal">×</button></div><div id="opsReservationForm"></div><div class="inline-actions"><button class="danger hidden" id="deleteOpsReservationBtn">誤登録を削除</button><button class="primary compact" id="saveOpsReservationBtn">予約を保存</button></div></div></div>
+      <div class="modal ops-owner-full" id="opsInventoryModal"><div class="sheet tall-sheet"><div class="sheet-head"><div><div class="eyebrow">Inventory</div><h2 class="no-bottom" id="opsInventoryTitle">在庫項目</h2></div><button class="close-btn" data-close-ops="opsInventoryModal">×</button></div><div id="opsInventoryForm"></div><div class="inline-actions"><button class="danger hidden" id="deleteOpsInventoryBtn">項目を削除</button><button class="primary compact" id="saveOpsInventoryBtn">在庫を保存</button></div></div></div>
+      <div class="modal ops-owner-full" id="opsManualModal"><div class="sheet tall-sheet"><div class="sheet-head"><div><div class="eyebrow">Official manual</div><h2 class="no-bottom" id="opsManualTitle">正本の運用基準</h2></div><button class="close-btn" data-close-ops="opsManualModal">×</button></div><div id="opsManualForm"></div><button class="primary" id="saveOpsManualBtn">正本運用基準を保存</button></div></div>
+      <div class="modal ops-owner-full" id="opsUpdateModal"><div class="sheet tall-sheet"><div class="sheet-head"><div><div class="eyebrow">Important update</div><h2 class="no-bottom" id="opsUpdateTitle">重要改訂を登録</h2></div><button class="close-btn" data-close-ops="opsUpdateModal">×</button></div><div id="opsUpdateForm"></div><div class="inline-actions"><button class="danger hidden" id="deleteOpsUpdateBtn">削除</button><button class="primary compact" id="saveOpsUpdateBtn">重要改訂を保存</button></div></div></div>
+    `);
+    document.querySelectorAll("[data-close-ops]").forEach((button)=>button.addEventListener("click",()=>closeModal(button.dataset.closeOps)));
+    id("saveOpsReservationBtn").addEventListener("click",saveReservationFromForm);
+    id("deleteOpsReservationBtn").addEventListener("click",deleteReservationFromForm);
+    id("saveOpsInventoryBtn").addEventListener("click",saveInventoryFromForm);
+    id("deleteOpsInventoryBtn").addEventListener("click",deleteInventoryFromForm);
+    id("saveOpsManualBtn").addEventListener("click",saveManualFromForm);
+    id("saveOpsUpdateBtn").addEventListener("click",saveUpdateFromForm);
+    id("deleteOpsUpdateBtn").addEventListener("click",deleteUpdateFromForm);
+  }
+
+  async function fetchJson(url,options={}){
+    const response=await fetch(url,{cache:"no-store",...options,headers:{"Content-Type":"application/json",...(options.headers||{})}});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"通信に失敗しました。");
+    return data;
+  }
+
+  async function loadStaffData({quiet=false}={}){
+    try{
+      const auth=identity();
+      const data=await fetchJson(`${API_URL}?date=${encodeURIComponent(todayKey())}&staffId=${encodeURIComponent(auth.staffId)}&token=${encodeURIComponent(auth.token)}&t=${Date.now()}`);
+      staffState={...staffState,...data,settings:{...DEFAULT_SETTINGS,...(data.settings||{})},manualMeta:data.manualMeta||{},reservations:data.reservations||[],inventory:data.inventory||[],inventoryAlerts:data.inventoryAlerts||[],updates:data.updates||[]};
+      setLocalJson(STAFF_CACHE_KEY,staffState);
+      renderStaffOperations();
+      if(!quiet)showToast("本日の営業情報を更新しました");
+    }catch(error){
+      const cached=localJson(STAFF_CACHE_KEY,null);
+      if(cached)staffState={...staffState,...cached,settings:{...DEFAULT_SETTINGS,...(cached.settings||{})}};
+      renderStaffOperations();
+      if(!quiet)showToast(error.message||"保存済みの営業情報を表示しています");
+    }
+  }
+
+  async function loadOwnerData(){
+    const body=id("operationsOwnerBody");
+    if(body)body.innerHTML='<div class="empty">営業情報を読み込んでいます。</div>';
+    const year=new Date().getFullYear();
+    const years=[year-4,year-3,year-2,year-1,year,year+1].join(",");
+    try{
+      const data=await fetchJson(`${API_URL}?owner=1&years=${years}&t=${Date.now()}`);
+      ownerState={...data,settings:{...DEFAULT_SETTINGS,...(data.settings||{})},reservations:data.reservations||{},inventory:data.inventory||[],manualMeta:data.manualMeta||{},updates:data.updates||[]};
+      staffState.manualMeta=ownerState.manualMeta;
+      renderSceneTagSearch();
+      renderOwnerPanel();
+    }catch(error){
+      if(body)body.innerHTML=`<div class="empty">${esc(error.message||"営業情報を読み込めませんでした。")}</div>`;
+    }
+  }
+
+  async function ownerSave(payload,message){
+    const data=await fetchJson(API_URL,{method:"POST",body:JSON.stringify(payload)});
+    if(message)showToast(message);
+    return data;
+  }
+
+  async function staffPatch(payload){
+    const profile=currentProfile();
+    if(!profile.name){openModal("profileModal");throw new Error("先に担当者名を登録してください。");}
+    const auth=identity();
+    return fetchJson(API_URL,{method:"PATCH",body:JSON.stringify({...payload,...auth,name:profile.name,role:profile.role||"",website:""})});
+  }
+
+  function renderStaffOperations(){
+    renderTodayReservations();
+    renderTimeline();
+    renderImportantUpdates();
+    renderInventoryAlerts();
+    renderSceneTagSearch();
+  }
+
+  function renderTodayReservations(){
+    const list=id("todayReservationList"),count=id("todayReservationCount");if(!list||!count)return;
+    const reservations=(staffState.reservations||[]).slice().sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+    count.textContent=`${reservations.length}件`;
+    if(!reservations.length){list.innerHTML='<div class="small muted" style="margin-top:10px">本日の予約情報は登録されていません。</div>';return;}
+    list.innerHTML=reservations.map((item)=>{
+      const isCompanion=(item.sceneTags||[]).includes("同伴");
+      const hasAnniversary=Boolean(item.anniversary||(item.sceneTags||[]).includes("記念日")||item.cakeStatus!=="不要"||item.bouquetStatus!=="不要");
+      const allergyText=item.allergiesConfirmed?(item.allergies||"なし"):"未確認";
+      const prep=renderReservationPrep(item);
+      return `<div class="ops-reservation ${item.allergiesConfirmed?'':'ops-important'}"><div class="ops-reservation-top"><div><strong>${esc(formatTime(item.time))}　${esc(item.surname)}様</strong><div class="small muted">${esc(item.partySize)}名｜${esc(item.seat)}${item.course?`｜${esc(item.course)}`:""}</div></div><span class="badge ${item.allergiesConfirmed?'':'warn'}">アレルギー ${esc(allergyText)}</span></div><div class="ops-meta">${(item.sceneTags||[]).map((tag)=>`<span class="badge">${esc(tag)}</span>`).join("")}${isCompanion?`<span class="badge warn">退店 ${esc(item.departureTime||"要確認")}</span>`:""}${hasAnniversary?'<span class="badge info">記念日対応</span>':""}</div>${item.dislikes?`<div class="ops-note"><strong>苦手食材</strong>　${esc(item.dislikes)}</div>`:""}${item.anniversary?`<div class="ops-note"><strong>記念日</strong>　${esc(item.anniversary)}</div>`:""}${item.ownerHandover?`<div class="ops-note"><strong>店主から</strong>　${esc(item.ownerHandover)}</div>`:""}${prep}</div>`;
+    }).join("");
+    bindReservationPrepChecks();
+  }
+
+  function checkValue(map,key){return Boolean(map&&map[key]&&map[key].checked);}
+  function renderCheckBox(item,group,field,label,available=true){
+    if(!available)return "";
+    const map=group==="cake"?item.cakeChecks:item.bouquetChecks;
+    const checked=checkValue(map,field);
+    const entry=map?.[field]||{};
+    return `<label class="ops-check"><input type="checkbox" data-ops-res-check data-reservation-id="${esc(item.id)}" data-reservation-date="${esc(item.date)}" data-group="${group}" data-field="${field}" ${checked?"checked":""}><span>${esc(label)}${checked&&entry.by?`<small class="muted"> ${esc(entry.by)}確認</small>`:""}</span></label>`;
+  }
+  function renderReservationPrep(item){
+    const cakeActive=item.cakeStatus!=="不要";
+    const bouquetActive=item.bouquetStatus!=="不要";
+    if(!cakeActive&&!bouquetActive)return "";

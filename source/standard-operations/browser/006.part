@@ -1,0 +1,67 @@
+    id("opsInventoryForm").innerHTML=`<div class="ops-grid-2"><label>分類<input class="form-input" id="opsStockCategory" value="${esc(stock.category)}" placeholder="冷蔵ショーケース等"></label><label>商品名<input class="form-input" id="opsStockName" value="${esc(stock.name)}"></label></div><div class="ops-grid-3"><label>単位<input class="form-input" id="opsStockUnit" value="${esc(stock.unit)}" placeholder="本・箱・袋"></label><label>基準数<input class="form-input" id="opsStockStandard" type="number" min="0" step="0.01" value="${stock.standardCount??""}"></label><label>発注点<input class="form-input" id="opsStockReorder" type="number" min="0" step="0.01" value="${stock.reorderPoint??""}"></label></div><div class="ops-grid-3"><label>現在数<input class="form-input" id="opsStockCurrent" type="number" min="0" step="0.01" value="${stock.currentCount??""}"></label><label>状態<select class="form-input" id="opsStockStatus">${INVENTORY_STATUSES.map((value)=>`<option ${value===stock.status?'selected':''}>${esc(value)}</option>`).join("")}</select></label><label>緊急度<select class="form-input" id="opsStockUrgency">${URGENCIES.map((value)=>`<option ${value===stock.urgency?'selected':''}>${esc(value)}</option>`).join("")}</select></label></div><div class="ops-form-section"><h3>購入先・発注方法</h3><div class="ops-grid-2"><label>購入先・仕入先<input class="form-input" id="opsStockSupplier" value="${esc(stock.supplier)}"></label><label>発注方法<input class="form-input" id="opsStockOrderMethod" value="${esc(stock.orderMethod)}" placeholder="電話・店頭・Web"></label><label>連絡先<input class="form-input" id="opsStockContact" value="${esc(stock.contact)}"></label><label>発注期限<input class="form-input" id="opsStockDeadline" value="${esc(stock.orderDeadline)}" placeholder="例：使用3日前"></label></div><label>注文時の注意事項<textarea id="opsStockOrderNote">${esc(stock.orderNote)}</textarea></label></div><div class="ops-form-section"><h3>入荷・発注単位</h3><div class="ops-grid-3"><label>標準入荷日数<input class="form-input" id="opsStockLeadDays" type="number" min="0" value="${stock.leadDays??""}"></label><label>使用予定日<input class="form-input" id="opsStockUseDate" type="date" value="${esc(stock.useDate)}"></label><label>発注単位<input class="form-input" id="opsStockOrderUnit" value="${esc(stock.orderUnit)}" placeholder="1本・1ケース"></label><label>標準発注量<input class="form-input" id="opsStockOrderQty" type="number" min="0" step="0.01" value="${stock.standardOrderQty??""}"></label><label>最小発注数量<input class="form-input" id="opsStockMinimum" type="number" min="0" step="0.01" value="${stock.minimumOrderQty??""}"></label><label>入荷報告数<input class="form-input" id="opsStockArrival" type="number" min="0" step="0.01" value="${stock.arrivalReportedCount??""}"></label></div></div>`;
+    openModal("opsInventoryModal");
+  }
+
+  function inventoryFromForm(){
+    const existing=editingInventoryId?ownerState.inventory.find((item)=>item.id===editingInventoryId):null;
+    return {id:editingInventoryId||makeId("stock"),category:id("opsStockCategory").value.trim()||"その他",name:id("opsStockName").value.trim(),unit:id("opsStockUnit").value.trim(),standardCount:numberValue(id("opsStockStandard").value),reorderPoint:numberValue(id("opsStockReorder").value),currentCount:numberValue(id("opsStockCurrent").value),status:id("opsStockStatus").value,urgency:id("opsStockUrgency").value,supplier:id("opsStockSupplier").value.trim(),orderMethod:id("opsStockOrderMethod").value.trim(),contact:id("opsStockContact").value.trim(),orderNote:id("opsStockOrderNote").value.trim(),orderDeadline:id("opsStockDeadline").value.trim(),leadDays:numberValue(id("opsStockLeadDays").value),useDate:id("opsStockUseDate").value,orderUnit:id("opsStockOrderUnit").value.trim(),standardOrderQty:numberValue(id("opsStockOrderQty").value),minimumOrderQty:numberValue(id("opsStockMinimum").value),arrivalReportedCount:numberValue(id("opsStockArrival").value),lastCheckedAt:existing?.lastCheckedAt||"",lastCheckedBy:existing?.lastCheckedBy||"",updatedAt:existing?.updatedAt||""};
+  }
+
+  async function saveInventoryFromForm(){
+    try{
+      const item=inventoryFromForm();if(!item.name)throw new Error("商品名を入力してください。");
+      ownerState.inventory=(ownerState.inventory||[]).filter((entry)=>entry.id!==item.id);ownerState.inventory.push(item);
+      await ownerSave({action:"saveInventory",items:ownerState.inventory},"在庫項目を保存しました");closeModal("opsInventoryModal");renderOwnerPanel();await loadStaffData({quiet:true});
+    }catch(error){showToast(error.message||"在庫を保存できませんでした");}
+  }
+
+  async function deleteInventoryFromForm(){
+    if(!editingInventoryId||!confirm("この在庫項目を削除しますか。"))return;
+    try{ownerState.inventory=ownerState.inventory.filter((item)=>item.id!==editingInventoryId);await ownerSave({action:"saveInventory",items:ownerState.inventory});closeModal("opsInventoryModal");renderOwnerPanel();showToast("在庫項目を削除しました");}catch(error){showToast(error.message||"削除できませんでした");}
+  }
+
+  async function quickStockStatus(stockId,nextStatus){
+    const item=ownerState.inventory.find((entry)=>entry.id===stockId);if(!item)return;
+    item.status=nextStatus;if(nextStatus==="入荷完了")item.urgency="通常";
+    try{await ownerSave({action:"saveInventory",items:ownerState.inventory});renderOwnerPanel();await loadStaffData({quiet:true});showToast(`「${nextStatus}」へ変更しました`);}catch(error){showToast(error.message||"状態を変更できませんでした");}
+  }
+
+  function renderOwnerManual(body){
+    const scenes=activeItems(config.scenes);
+    const now=Date.now();
+    const due=scenes.filter((scene)=>{
+      const meta=ownerState.manualMeta?.[scene.id];if(!meta?.lastReviewedAt)return true;
+      const months=Number(meta.reviewMonths||12);const next=new Date(meta.lastReviewedAt);next.setMonth(next.getMonth()+months);return next.getTime()<=now;
+    });
+    body.innerHTML=`<div class="ops-owner-status"><div><strong>${scenes.length}</strong><span>正本項目</span></div><div><strong>${Object.keys(ownerState.manualMeta||{}).length}</strong><span>運用基準登録済み</span></div><div><strong>${due.length}</strong><span>見直し候補</span></div><div><strong>${scenes.filter((scene)=>(ownerState.manualMeta?.[scene.id]?.sceneTags||[]).length).length}</strong><span>シーンタグ済み</span></div></div><div class="ops-owner-toolbar"><input class="search" id="opsManualSearch" type="search" placeholder="正本名・分類を検索"><select class="form-input" id="opsManualDueFilter"><option value="all">すべて</option><option value="due">見直し候補のみ</option></select></div><div id="opsOwnerManualList"></div>`;
+    id("opsManualSearch").addEventListener("input",renderOwnerManualList);
+    id("opsManualDueFilter").addEventListener("change",renderOwnerManualList);
+    renderOwnerManualList();
+  }
+
+  function manualDue(meta){
+    if(!meta?.lastReviewedAt)return true;
+    const next=new Date(meta.lastReviewedAt);next.setMonth(next.getMonth()+Number(meta.reviewMonths||12));return next.getTime()<=Date.now();
+  }
+  function renderOwnerManualList(){
+    const list=id("opsOwnerManualList");if(!list)return;
+    const query=String(id("opsManualSearch")?.value||"").trim().toLowerCase();const dueOnly=id("opsManualDueFilter")?.value==="due";
+    const scenes=activeItems(config.scenes).filter((scene)=>{
+      const meta=ownerState.manualMeta?.[scene.id];
+      return (!query||`${scene.title} ${scene.category} ${(meta?.sceneTags||[]).join(" ")}`.toLowerCase().includes(query))&&(!dueOnly||manualDue(meta));
+    });
+    list.innerHTML=scenes.length?`<div class="ops-owner-list">${scenes.map((scene)=>{
+      const meta=ownerState.manualMeta?.[scene.id]||{};const due=manualDue(meta);
+      return `<div class="ops-owner-item ${due?'ops-review-due':''}"><div class="ops-owner-item-top"><div><strong>${esc(scene.title)}</strong><div class="small muted">${esc(scene.category)}｜${meta.lastReviewedAt?`最終確認 ${esc(meta.lastReviewedAt.slice(0,10))}`:"未確認"}</div></div><span class="badge ${due?'warn':''}">${due?'見直し候補':OWNER_LEVELS[Number(meta.ownerLevel||0)]}</span></div><div class="ops-meta">${(meta.sceneTags||[]).map((tag)=>`<span class="badge">${esc(tag)}</span>`).join("")}</div><div class="ops-owner-item-actions"><button class="secondary" data-edit-manual="${esc(scene.id)}">運用基準を編集</button><button class="secondary" data-review-manual="${esc(scene.id)}">現行基準として確認</button></div></div>`;
+    }).join("")}</div>`:'<div class="empty">該当する正本がありません。</div>';
+    list.querySelectorAll("[data-edit-manual]").forEach((button)=>button.addEventListener("click",()=>openManualForm(button.dataset.editManual)));
+    list.querySelectorAll("[data-review-manual]").forEach((button)=>button.addEventListener("click",()=>markManualReviewed(button.dataset.reviewManual)));
+  }
+
+  function defaultManualMeta(){return {sceneTags:[],ownerLevel:0,adjustable:[],ownerApproval:[],forbidden:[],reason:"",priority:[],relatedIds:[],reviewMonths:12,lastReviewedAt:"",updatedAt:""};}
+  function openManualForm(sceneId){
+    const scene=config.scenes.find((item)=>item.id===sceneId);if(!scene)return;
+    editingSceneId=sceneId;const meta={...defaultManualMeta(),...(ownerState.manualMeta?.[sceneId]||{})};
+    id("opsManualTitle").textContent=scene.title;
+    const otherScenes=activeItems(config.scenes).filter((item)=>item.id!==sceneId);
+    const related=[0,1,2].map((index)=>`<label>関連正本 ${index+1}<select class="form-input" data-related-index="${index}"><option value="">未設定</option>${otherScenes.map((item)=>`<option value="${esc(item.id)}" ${meta.relatedIds?.[index]===item.id?'selected':''}>${esc(item.title)}</option>`).join("")}</select></label>`).join("");

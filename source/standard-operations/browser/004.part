@@ -1,0 +1,80 @@
+        if(data.item.status==="足りる"||data.item.status==="入荷完了"){if(stateIndex>=0)staffState.inventoryAlerts.splice(stateIndex,1);}else if(stateIndex>=0)staffState.inventoryAlerts[stateIndex]=data.item;else staffState.inventoryAlerts.push(data.item);
+        setLocalJson(STAFF_CACHE_KEY,staffState);renderInventoryAlerts();renderStaffInventoryModal();showToast("在庫確認を保存しました");
+      }catch(error){button.disabled=false;showToast(error.message||"在庫確認を保存できませんでした");}
+    }));
+  }
+
+  function renderOwnerPanel(){
+    const body=id("operationsOwnerBody");if(!body)return;
+    if(!ownerState){body.innerHTML='<div class="empty">営業情報を読み込んでいます。</div>';return;}
+    if(ownerView==="inventory")renderOwnerInventory(body);
+    else if(ownerView==="manual")renderOwnerManual(body);
+    else if(ownerView==="updates")renderOwnerUpdates(body);
+    else if(ownerView==="settings")renderOwnerSettings(body);
+    else renderOwnerReservations(body);
+  }
+
+  function renderOwnerReservations(body){
+    const date=id("opsReservationDateFilter")?.value||todayKey();
+    const all=allOwnerReservations();
+    const selected=all.filter((item)=>item.date===date).sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+    const tomorrow=addDays(todayKey(),1);
+    const tomorrowPrep=all.filter((item)=>item.date===tomorrow&&activeReservation(item)&&(item.cakeStatus==="未確認"||item.cakeStatus==="購入必要"||item.bouquetStatus==="未確認"||item.bouquetStatus==="購入必要"));
+    const phoneGroups=new Set(all.filter((item)=>normalizePhone(item.phone)).map((item)=>normalizePhone(item.phone))).size;
+    body.innerHTML=`<div class="ops-owner-status"><div><strong>${all.filter((item)=>item.date===todayKey()&&activeReservation(item)).length}</strong><span>本日の予約</span></div><div><strong>${tomorrowPrep.length}</strong><span>明日の購入確認</span></div><div><strong>${all.filter((item)=>item.bookingStatus==="来店済").length}</strong><span>来店履歴</span></div><div><strong>${phoneGroups}</strong><span>電話番号登録</span></div></div>${tomorrowPrep.length?`<div class="card ops-important"><div class="ops-card-title"><h3>明日のケーキ・花束</h3><span class="badge warn">購入確認</span></div>${tomorrowPrep.map((item)=>`<div class="ops-alert"><div class="ops-alert-main"><strong>${esc(item.time)} ${esc(item.fullName)}様</strong><span class="small muted">ケーキ：${esc(item.cakeStatus)}｜花束：${esc(item.bouquetStatus)}</span></div><button class="secondary small-button" data-edit-reservation="${esc(item.id)}">開く</button></div>`).join("")}</div>`:""}<div class="ops-owner-toolbar"><label>営業日<input class="form-input" id="opsReservationDateFilter" type="date" value="${esc(date)}"></label><button class="primary" id="addOpsReservationBtn">＋予約を追加</button></div><div class="ops-owner-list" id="opsOwnerReservationList">${selected.length?selected.map(ownerReservationCard).join(""):'<div class="empty">この日の予約はありません。</div>'}</div>`;
+    id("opsReservationDateFilter").addEventListener("change",renderOwnerPanel);
+    id("addOpsReservationBtn").addEventListener("click",()=>openReservationForm(null,date));
+    body.querySelectorAll("[data-edit-reservation]").forEach((button)=>button.addEventListener("click",()=>openReservationForm(all.find((item)=>item.id===button.dataset.editReservation),date)));
+  }
+
+  function ownerReservationCard(item){
+    const warnings=[];
+    if(!item.allergiesConfirmed)warnings.push("アレルギー未確認");
+    if((item.sceneTags||[]).includes("同伴")&&!item.departureTime)warnings.push("退店時刻未確認");
+    if(item.cakeStatus==="購入必要"||item.bouquetStatus==="購入必要")warnings.push("購入必要");
+    return `<div class="ops-owner-item ${warnings.length?'ops-important':''}"><div class="ops-owner-item-top"><div><strong>${esc(item.time||"時刻未定")}　${esc(item.fullName)}様</strong><div class="small muted">${esc(item.partySize)}名｜${esc(item.seat)}｜${esc(item.bookingStatus)}</div></div><span class="badge ${warnings.length?'warn':''}">${warnings.length?esc(warnings[0]):esc(item.bookingChannel)}</span></div><div class="ops-meta">${(item.sceneTags||[]).map((tag)=>`<span class="badge">${esc(tag)}</span>`).join("")}</div>${item.course?`<div class="ops-note"><strong>コース</strong>　${esc(item.course)}</div>`:""}${item.anniversary?`<div class="ops-note"><strong>記念日</strong>　${esc(item.anniversary)}</div>`:""}${item.allergies?`<div class="ops-note"><strong>アレルギー</strong>　${esc(item.allergies)} ${item.allergiesConfirmed?'（確認済み）':'（未確認）'}</div>`:""}<div class="ops-owner-item-actions"><button class="secondary" data-edit-reservation="${esc(item.id)}">編集</button></div></div>`;
+  }
+
+  function emptyReservation(date){
+    return {id:makeId("reservation"),date:date||todayKey(),time:"",fullName:"",surname:"",phone:"",email:"",partySize:2,seat:"A席2",course:"",anniversary:"",cakeStatus:"不要",bouquetStatus:"不要",cakeChecks:{},bouquetChecks:{},allergies:"",allergiesConfirmed:false,dislikes:"",preferences:{meat:"",rice:"",drink:"",seat:"",pace:"",commonCourse:""},ownerHandover:"",bookingStatus:"予約済",bookingChannel:"電話",sceneTags:[],departureTime:"",customerKey:"",createdAt:"",updatedAt:""};
+  }
+
+  function openReservationForm(reservation,date){
+    const item=deepClone(reservation||emptyReservation(date));
+    editingReservationId=reservation?.id||"";
+    editingReservationYear=reservation?reservationYear(reservation):String(item.date).slice(0,4);
+    linkedCustomerKey=item.customerKey||"";
+    id("opsReservationTitle").textContent=reservation?"予約を編集":"予約を登録";
+    id("deleteOpsReservationBtn").classList.toggle("hidden",!reservation);
+    id("opsReservationForm").innerHTML=reservationFormHtml(item);
+    id("opsReservationPhone").addEventListener("input",renderPastCustomerInfo);
+    id("opsReservationFullName").addEventListener("blur",()=>{
+      const surname=id("opsReservationSurname");if(!surname.value)surname.value=guessSurname(id("opsReservationFullName").value);
+    });
+    id("opsReservationSceneTags").addEventListener("change",toggleDepartureRequired);
+    toggleDepartureRequired();renderPastCustomerInfo();openModal("opsReservationModal");
+  }
+
+  function guessSurname(fullName){
+    const normalized=String(fullName||"").trim();
+    if(!normalized)return "";
+    const split=normalized.split(/[\s　]+/).filter(Boolean);return split[0]||normalized;
+  }
+
+  function reservationFormHtml(item){
+    const p=item.preferences||{};
+    return `<div class="ops-grid-2"><label>営業日<input class="form-input" id="opsReservationDate" type="date" value="${esc(item.date)}"></label><label>予約時間<input class="form-input" id="opsReservationTime" type="time" value="${esc(item.time)}"></label></div><div class="ops-grid-2"><label>氏名<input class="form-input" id="opsReservationFullName" maxlength="160" value="${esc(item.fullName)}" placeholder="店主管理・Excel用の氏名"></label><label>スタッフ表示用の名字<input class="form-input" id="opsReservationSurname" maxlength="80" value="${esc(item.surname)}" placeholder="例：田中"></label></div><div class="ops-grid-2"><label>電話番号<input class="form-input" id="opsReservationPhone" inputmode="tel" value="${esc(item.phone)}"></label><label>メールアドレス<input class="form-input" id="opsReservationEmail" type="email" value="${esc(item.email)}"></label></div><div id="opsPastCustomerInfo"></div><div class="ops-grid-3"><label>人数<input class="form-input" id="opsReservationPartySize" type="number" min="1" max="30" value="${esc(item.partySize)}"></label><label>座席<select class="form-input" id="opsReservationSeat">${SEATS.map((value)=>`<option ${value===item.seat?'selected':''}>${esc(value)}</option>`).join("")}</select></label><label>状態<select class="form-input" id="opsReservationStatus">${BOOKING_STATUSES.map((value)=>`<option ${value===item.bookingStatus?'selected':''}>${esc(value)}</option>`).join("")}</select></label></div><div class="ops-grid-2"><label>予約経路<select class="form-input" id="opsReservationChannel">${BOOKING_CHANNELS.map((value)=>`<option ${value===item.bookingChannel?'selected':''}>${esc(value)}</option>`).join("")}</select></label><label>コース<input class="form-input" id="opsReservationCourse" maxlength="500" value="${esc(item.course)}"></label></div><div class="ops-form-section"><h3>利用シーン</h3><div class="ops-checkbox-grid" id="opsReservationSceneTags">${SCENE_TAGS.map((tag)=>`<label class="ops-checkbox-label"><input type="checkbox" value="${esc(tag)}" ${(item.sceneTags||[]).includes(tag)?'checked':''}>${esc(tag)}</label>`).join("")}</div><label id="opsDepartureWrap">同伴の退店希望時刻<input class="form-input" id="opsReservationDeparture" type="time" value="${esc(item.departureTime)}"></label></div><div class="ops-form-section"><h3>アレルギー・苦手食材</h3><label>アレルギー<textarea id="opsReservationAllergies" maxlength="4000">${esc(item.allergies)}</textarea></label><label class="ops-checkbox-label"><input id="opsReservationAllergyConfirmed" type="checkbox" ${item.allergiesConfirmed?'checked':''}>今回の予約で確認済み</label><label>苦手食材<textarea id="opsReservationDislikes" maxlength="4000">${esc(item.dislikes)}</textarea></label></div><div class="ops-form-section"><h3>記念日・ケーキ・花束</h3><label>記念日・プレート文・写真撮影等<textarea id="opsReservationAnniversary" maxlength="4000">${esc(item.anniversary)}</textarea></label><div class="ops-grid-2"><label>ケーキ<select class="form-input" id="opsReservationCakeStatus">${PREP_STATUSES.map((value)=>`<option ${value===item.cakeStatus?'selected':''}>${esc(value)}</option>`).join("")}</select></label><label>花束<select class="form-input" id="opsReservationBouquetStatus">${PREP_STATUSES.map((value)=>`<option ${value===item.bouquetStatus?'selected':''}>${esc(value)}</option>`).join("")}</select></label></div></div><div class="ops-form-section"><h3>前回の好み（今回の注文には自動確定しません）</h3><div class="ops-grid-2"><label>フィレ／サーロイン<input class="form-input" id="opsPrefMeat" value="${esc(p.meat||"")}"></label><label>白ごはん／ガーリックライス<input class="form-input" id="opsPrefRice" value="${esc(p.rice||"")}"></label><label>ワイン・飲み物<input class="form-input" id="opsPrefDrink" value="${esc(p.drink||"")}"></label><label>希望席<input class="form-input" id="opsPrefSeat" value="${esc(p.seat||"")}"></label><label>提供ペース<input class="form-input" id="opsPrefPace" value="${esc(p.pace||"")}"></label><label>よく選ぶコース<input class="form-input" id="opsPrefCourse" value="${esc(p.commonCourse||"")}"></label></div></div><div class="ops-form-section"><label>店主の引き継ぎ事項<textarea id="opsReservationHandover" maxlength="4000">${esc(item.ownerHandover)}</textarea></label></div>`;
+  }
+
+  function checkedSceneTags(){return [...id("opsReservationSceneTags").querySelectorAll('input[type="checkbox"]:checked')].map((input)=>input.value);}
+  function toggleDepartureRequired(){
+    const tags=checkedSceneTags();const wrap=id("opsDepartureWrap");if(!wrap)return;
+    wrap.classList.toggle("ops-hidden",!tags.includes("同伴"));
+  }
+
+  function customerMatches(phone,currentId=""){
+    const normalized=normalizePhone(phone);if(!normalized)return [];
+    return allOwnerReservations().filter((item)=>item.id!==currentId&&normalizePhone(item.phone)===normalized).sort((a,b)=>`${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
+  }
+
+  function renderPastCustomerInfo(){
