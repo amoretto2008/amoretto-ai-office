@@ -14,6 +14,7 @@
     .then(()=>load("core-content.js"))
     .then(()=>load("admin-core.js"))
     .then(()=>load("admin-bind.js"))
+    .then(()=>load("guide.js"))
     .catch(()=>{
       document.body.innerHTML='<p style="padding:24px;font-family:sans-serif">アプリの読み込みに失敗しました。画面を更新してください。</p>';
     });
