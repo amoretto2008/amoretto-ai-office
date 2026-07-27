@@ -1,0 +1,100 @@
+    const box=id("opsPastCustomerInfo");if(!box)return;
+    const matches=customerMatches(id("opsReservationPhone")?.value,editingReservationId);
+    if(!matches.length){box.innerHTML='<div class="ops-past-box">同じ電話番号の過去履歴はありません。</div>';return;}
+    const latest=matches[0];
+    box.innerHTML=`<div class="ops-past-box"><strong>同じ電話番号の履歴候補：${matches.length}件</strong><div class="ops-past-entry"><strong>${esc(latest.date)}　${esc(latest.fullName)}様</strong><div>コース：${esc(latest.course||"未登録")}</div><div>アレルギー：${esc(latest.allergies||"なし")} ${latest.allergiesConfirmed?'（確認済み）':'（当時未確認）'}</div><div>苦手食材：${esc(latest.dislikes||"なし")}</div><div>記念日：${esc(latest.anniversary||"なし")}</div><div>好み：${esc(Object.values(latest.preferences||{}).filter(Boolean).join("／")||"未登録")}</div></div><button class="secondary" id="linkPastCustomerBtn">このお客様の履歴に結び付ける</button><div class="small muted">過去情報は参考表示のみです。今回の内容は必ず再確認してください。</div></div>`;
+    id("linkPastCustomerBtn").addEventListener("click",()=>{
+      linkedCustomerKey=latest.customerKey||normalizePhone(latest.phone);
+      const p=latest.preferences||{};
+      id("opsPrefMeat").value=p.meat||"";id("opsPrefRice").value=p.rice||"";id("opsPrefDrink").value=p.drink||"";id("opsPrefSeat").value=p.seat||"";id("opsPrefPace").value=p.pace||"";id("opsPrefCourse").value=p.commonCourse||"";
+      showToast("過去情報を参考欄へ表示しました");
+    });
+  }
+
+  function reservationFromForm(){
+    const date=id("opsReservationDate").value;
+    const fullName=id("opsReservationFullName").value.trim();
+    const surname=id("opsReservationSurname").value.trim()||guessSurname(fullName);
+    const phone=normalizePhone(id("opsReservationPhone").value);
+    const matches=customerMatches(phone,editingReservationId);
+    const existing=editingReservationId?allOwnerReservations().find((item)=>item.id===editingReservationId):null;
+    const customerKey=linkedCustomerKey||(existing?.customerKey||(!matches.length&&phone?phone:""));
+    return {id:editingReservationId||makeId("reservation"),date,time:id("opsReservationTime").value,fullName,surname,phone,email:id("opsReservationEmail").value.trim(),partySize:Number(id("opsReservationPartySize").value||0),seat:id("opsReservationSeat").value,course:id("opsReservationCourse").value.trim(),anniversary:id("opsReservationAnniversary").value.trim(),cakeStatus:id("opsReservationCakeStatus").value,bouquetStatus:id("opsReservationBouquetStatus").value,cakeChecks:existing?.cakeChecks||{},bouquetChecks:existing?.bouquetChecks||{},allergies:id("opsReservationAllergies").value.trim(),allergiesConfirmed:id("opsReservationAllergyConfirmed").checked,dislikes:id("opsReservationDislikes").value.trim(),preferences:{meat:id("opsPrefMeat").value.trim(),rice:id("opsPrefRice").value.trim(),drink:id("opsPrefDrink").value.trim(),seat:id("opsPrefSeat").value.trim(),pace:id("opsPrefPace").value.trim(),commonCourse:id("opsPrefCourse").value.trim()},ownerHandover:id("opsReservationHandover").value.trim(),bookingStatus:id("opsReservationStatus").value,bookingChannel:id("opsReservationChannel").value,sceneTags:checkedSceneTags(),departureTime:id("opsReservationDeparture").value,customerKey,createdAt:existing?.createdAt||"",updatedAt:existing?.updatedAt||""};
+  }
+
+  async function saveReservationFromForm(){
+    try{
+      const item=reservationFromForm();
+      if(!item.date||!item.fullName||!item.surname||!item.partySize)throw new Error("営業日、氏名、名字、人数を入力してください。");
+      if(item.sceneTags.includes("同伴")&&!item.departureTime)throw new Error("同伴は退店希望時刻が必須です。");
+      const newYear=reservationYear(item);
+      const yearsToSave=new Set([newYear]);
+      if(editingReservationId&&editingReservationYear&&editingReservationYear!==newYear)yearsToSave.add(editingReservationYear);
+      Object.keys(ownerState.reservations).forEach((year)=>{ownerState.reservations[year]=(ownerState.reservations[year]||[]).filter((entry)=>entry.id!==item.id);});
+      if(!ownerState.reservations[newYear])ownerState.reservations[newYear]=[];
+      ownerState.reservations[newYear].push(item);
+      for(const year of yearsToSave){await ownerSave({action:"saveReservations",year:Number(year),reservations:ownerState.reservations[year]||[]});}
+      closeModal("opsReservationModal");await loadOwnerData();await loadStaffData({quiet:true});showToast("予約を保存しました");
+    }catch(error){showToast(error.message||"予約を保存できませんでした");}
+  }
+
+  async function deleteReservationFromForm(){
+    if(!editingReservationId||!confirm("誤登録の予約を完全に削除しますか。キャンセルの場合は状態を変更してください。"))return;
+    try{
+      const year=editingReservationYear;
+      ownerState.reservations[year]=(ownerState.reservations[year]||[]).filter((item)=>item.id!==editingReservationId);
+      await ownerSave({action:"saveReservations",year:Number(year),reservations:ownerState.reservations[year]});
+      closeModal("opsReservationModal");renderOwnerPanel();showToast("誤登録を削除しました");
+    }catch(error){showToast(error.message||"削除できませんでした");}
+  }
+
+  function renderOwnerInventory(body){
+    const items=ownerState.inventory||[];
+    const urgent=items.filter((item)=>item.urgency==="至急"&&item.status!=="足りる"&&item.status!=="入荷完了").length;
+    const need=items.filter((item)=>item.status==="発注必要").length;
+    const waiting=items.filter((item)=>item.status==="注文済み"||item.status==="入荷待ち").length;
+    body.innerHTML=`<div class="ops-owner-status"><div><strong>${items.length}</strong><span>在庫項目</span></div><div><strong>${urgent}</strong><span>至急</span></div><div><strong>${need}</strong><span>発注必要</span></div><div><strong>${waiting}</strong><span>注文・入荷待ち</span></div></div><div class="ops-owner-toolbar"><input class="search" id="opsInventorySearch" type="search" placeholder="在庫名・購入先を検索"><button class="secondary" id="initializeInventoryBtn">59項目から初期化</button><button class="primary" id="addInventoryBtn">＋項目を追加</button></div><div id="opsOwnerInventoryList"></div>`;
+    id("opsInventorySearch").addEventListener("input",renderOwnerInventoryList);
+    id("initializeInventoryBtn").addEventListener("click",initializeInventoryFromChecklist);
+    id("addInventoryBtn").addEventListener("click",()=>openInventoryForm(null));
+    renderOwnerInventoryList();
+  }
+
+  function renderOwnerInventoryList(){
+    const list=id("opsOwnerInventoryList");if(!list)return;
+    const query=String(id("opsInventorySearch")?.value||"").trim().toLowerCase();
+    const items=(ownerState.inventory||[]).filter((item)=>!query||`${item.name} ${item.category} ${item.supplier}`.toLowerCase().includes(query));
+    const groups=[...new Set(items.map((item)=>item.category||"その他"))];
+    list.innerHTML=groups.length?groups.map((category)=>`<div class="ops-section-title"><h3>${esc(category)}</h3><span class="small muted">${items.filter((item)=>item.category===category).length}件</span></div><div class="ops-owner-list">${items.filter((item)=>item.category===category).map((item)=>`<div class="ops-owner-item ${item.urgency==="至急"&&item.status!=="足りる"&&item.status!=="入荷完了"?'ops-danger':''}"><div class="ops-owner-item-top"><div><strong>${esc(item.name)}</strong><div class="small muted">現在 ${item.currentCount??"未入力"}${esc(item.unit||"")}｜発注点 ${item.reorderPoint??"未設定"}${esc(item.unit||"")}</div></div><span class="badge ${item.urgency==="至急"?'danger':statusClass(item.status)}">${item.urgency==="至急"?'至急｜':''}${esc(item.status)}</span></div>${item.supplier?`<div class="ops-note"><strong>購入先</strong>　${esc(item.supplier)}${item.orderMethod?`｜${esc(item.orderMethod)}`:""}</div>`:""}<div class="ops-owner-item-actions"><button class="secondary" data-edit-stock="${esc(item.id)}">編集</button><button class="secondary" data-stock-status="${esc(item.id)}" data-next-status="発注必要">発注必要</button><button class="secondary" data-stock-status="${esc(item.id)}" data-next-status="注文済み">注文済み</button><button class="secondary" data-stock-status="${esc(item.id)}" data-next-status="入荷待ち">入荷待ち</button><button class="secondary" data-stock-status="${esc(item.id)}" data-next-status="入荷完了">入荷完了</button></div></div>`).join("")}</div>`).join(""):'<div class="empty">在庫項目がありません。既存の59項目から初期化してください。</div>';
+    list.querySelectorAll("[data-edit-stock]").forEach((button)=>button.addEventListener("click",()=>openInventoryForm(ownerState.inventory.find((item)=>item.id===button.dataset.editStock))));
+    list.querySelectorAll("[data-stock-status]").forEach((button)=>button.addEventListener("click",()=>quickStockStatus(button.dataset.stockStatus,button.dataset.nextStatus)));
+  }
+
+  async function initializeInventoryFromChecklist(){
+    if((ownerState.inventory||[]).length&&!confirm("現在の在庫項目に、既存チェックリストの不足項目を追加しますか。"))return;
+    const checklist=(config.checklists||[]).find((item)=>item.id==="inventory"||String(item.title||"").includes("在庫"));
+    if(!checklist) return showToast("在庫チェックリストが見つかりません。");
+    const headings=new Set(["冷蔵ショーケース","ワインセラー","カウンター棚"]);
+    let category="その他";
+    const existing=new Set((ownerState.inventory||[]).map((item)=>item.name));
+    const additions=[];
+    (checklist.items||[]).forEach((entry)=>{
+      const text=String(entry.text||entry||"").trim();if(!text)return;
+      if(headings.has(text)){category=text;return;}
+      if(existing.has(text))return;
+      additions.push({id:entry.id&&/^[a-zA-Z0-9_-]+$/.test(entry.id)?`stock-${entry.id}`:makeId("stock"),category,name:text,unit:"",standardCount:null,reorderPoint:null,currentCount:null,status:"足りる",urgency:"通常",supplier:"",orderMethod:"",contact:"",orderNote:"",orderDeadline:"",leadDays:null,useDate:"",orderUnit:"",standardOrderQty:null,minimumOrderQty:null,arrivalReportedCount:null,lastCheckedAt:"",lastCheckedBy:"",updatedAt:""});
+    });
+    try{
+      ownerState.inventory=[...(ownerState.inventory||[]),...additions];
+      await ownerSave({action:"saveInventory",items:ownerState.inventory},`${additions.length}件の在庫項目を追加しました`);
+      renderOwnerPanel();await loadStaffData({quiet:true});
+    }catch(error){showToast(error.message||"在庫を初期化できませんでした");}
+  }
+
+  function emptyInventory(){return {id:makeId("stock"),category:"その他",name:"",unit:"",standardCount:null,reorderPoint:null,currentCount:null,status:"足りる",urgency:"通常",supplier:"",orderMethod:"",contact:"",orderNote:"",orderDeadline:"",leadDays:null,useDate:"",orderUnit:"",standardOrderQty:null,minimumOrderQty:null,arrivalReportedCount:null,lastCheckedAt:"",lastCheckedBy:"",updatedAt:""};}
+  function numberValue(value){return value===""?null:Number(value);}
+
+  function openInventoryForm(item){
+    const stock=deepClone(item||emptyInventory());editingInventoryId=item?.id||"";
+    id("opsInventoryTitle").textContent=item?"在庫項目を編集":"在庫項目を追加";
+    id("deleteOpsInventoryBtn").classList.toggle("hidden",!item);
