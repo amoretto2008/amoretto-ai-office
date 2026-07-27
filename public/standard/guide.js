@@ -143,7 +143,7 @@
       if(title.includes(nt)) score+=20-index;
       else if(record.searchable.includes(nt)) score+=8;
     });
-    if(record.type==="scene") score+=2;
+    if(score>0&&record.type==="scene") score+=2;
     return score;
   }
 
