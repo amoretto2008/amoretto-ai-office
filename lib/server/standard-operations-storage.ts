@@ -14,24 +14,61 @@ function requireSupabase() {
   return supabase;
 }
 
-function isMissingObject(error: unknown) {
+function errorDetails(error: unknown) {
   const record = error && typeof error === "object" ? (error as Record<string, unknown>) : {};
-  const message = String(record.message ?? error ?? "").toLowerCase();
-  const code = String(record.code ?? record.error ?? "").toLowerCase();
+  const message = String(record.message ?? error ?? "");
+  const code = String(record.code ?? record.error ?? "");
   const status = Number(record.statusCode ?? record.status ?? 0);
-  const combined = `${message} ${code}`;
+  return { message, code, status, combined: `${message} ${code}`.toLowerCase() };
+}
+
+function isMissingObject(error: unknown) {
+  const { code, status, combined } = errorDetails(error);
+  const normalizedCode = code.toLowerCase();
 
   if (combined.includes("bucket")) return false;
   return (
     status === 404 ||
-    code === "404" ||
-    code === "not_found" ||
-    code === "object_not_found" ||
+    normalizedCode === "404" ||
+    normalizedCode === "not_found" ||
+    normalizedCode === "object_not_found" ||
     combined.includes("object not found") ||
     combined.includes("resource was not found") ||
     combined.includes("not found") ||
     combined.includes("does not exist")
   );
+}
+
+function storageLocation(path: string) {
+  const separator = path.lastIndexOf("/");
+  return {
+    folder: separator >= 0 ? path.slice(0, separator) : "",
+    fileName: separator >= 0 ? path.slice(separator + 1) : path,
+  };
+}
+
+async function confirmObjectIsAbsent(
+  supabase: ReturnType<typeof requireSupabase>,
+  path: string
+) {
+  const { folder, fileName } = storageLocation(path);
+  const { data, error } = await supabase.storage.from(BUCKET).list(folder, {
+    limit: 100,
+    search: fileName,
+  });
+
+  if (error) {
+    const details = errorDetails(error);
+    console.error("AMORÉTTO STANDARD operations list failed", {
+      path,
+      message: details.message,
+      statusCode: details.status,
+      code: details.code,
+    });
+    return false;
+  }
+
+  return !(data ?? []).some((item) => item.name === fileName);
 }
 
 function safeYear(value: number) {
@@ -45,12 +82,15 @@ async function readJson(path: string): Promise<JsonRecord | null> {
   const supabase = requireSupabase();
   const { data, error } = await supabase.storage.from(BUCKET).download(path);
   if (error) {
-    if (isMissingObject(error)) return null;
+    if (isMissingObject(error) || (await confirmObjectIsAbsent(supabase, path))) {
+      return null;
+    }
+    const details = errorDetails(error);
     console.error("AMORÉTTO STANDARD operations read failed", {
       path,
-      message: error.message,
-      statusCode: (error as unknown as Record<string, unknown>).statusCode,
-      code: (error as unknown as Record<string, unknown>).code,
+      message: details.message,
+      statusCode: details.status,
+      code: details.code,
     });
     throw new Error("営業データの読み込みに失敗しました。");
   }
@@ -143,10 +183,9 @@ export async function writeOperationsUpdates(updates: JsonRecord[]) {
 export async function deleteOperationsReservationsYear(year: number) {
   const clean = safeYear(year);
   const supabase = requireSupabase();
-  const { error } = await supabase.storage.from(BUCKET).remove([
-    `${PREFIX}/reservations/${clean}.json`,
-  ]);
-  if (error && !isMissingObject(error)) {
+  const path = `${PREFIX}/reservations/${clean}.json`;
+  const { error } = await supabase.storage.from(BUCKET).remove([path]);
+  if (error && !isMissingObject(error) && !(await confirmObjectIsAbsent(supabase, path))) {
     throw new Error("営業履歴の削除に失敗しました。");
   }
   return { year: clean };
