@@ -22,6 +22,7 @@
     .then(()=>load("knowledge.js"))
     .then(()=>load("knowledge-flow.js"))
     .then(()=>load("operations.js"))
+    .then(()=>load("priority-flow.js"))
     .catch(()=>{
       document.body.innerHTML='<p style="padding:24px;font-family:sans-serif">アプリの読み込みに失敗しました。画面を更新してください。</p>';
     });
