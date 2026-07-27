@@ -12,9 +12,44 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const ALLOWED_SKILL_IDS = new Set([
+  "welcome",
+  "seat-guide",
+  "oshibori-menu",
+  "order-confirm",
+  "water-observe",
+  "clear-plate",
+  "payment-farewell",
+  "beer",
+  "highball",
+  "wine",
+  "non-alcohol",
+  "aburi",
+  "foiegras",
+  "soup-bread",
+  "abalone",
+  "salad",
+  "meat",
+  "garlic-rice",
+  "anniversary",
+  "cake-prepare",
+  "cake-serve-photo",
+  "cake-cut",
+  "allergy",
+  "complaint",
+  "fire-smoke",
+  "gas",
+  "equipment",
+]);
+
 const staffIdSchema = z.string().regex(/^staff-[a-f0-9-]{36}$/i);
 const tokenSchema = z.string().min(40).max(200);
-const skillIdSchema = z.string().min(1).max(100).regex(/^[a-z0-9_-]+$/i);
+const skillIdSchema = z
+  .string()
+  .min(1)
+  .max(100)
+  .regex(/^[a-z0-9_-]+$/i)
+  .refine((value) => ALLOWED_SKILL_IDS.has(value), "登録されていないスキルです。");
 const skillUpdateSchema = z.object({
   id: skillIdSchema,
   selfLevel: z.number().int().min(0).max(1),
@@ -33,7 +68,7 @@ const selfSchema = z.object({
   token: tokenSchema,
   name: z.string().trim().min(1).max(80),
   role: z.string().trim().max(80).default(""),
-  skills: z.array(skillUpdateSchema).max(80),
+  skills: z.array(skillUpdateSchema).max(ALLOWED_SKILL_IDS.size),
   website: z.string().max(200).optional().default(""),
 });
 
@@ -102,7 +137,12 @@ export async function POST(request: Request) {
     if (action === "read") {
       const input = readSchema.parse(raw);
       const profile = await readStandardSkillProfile(input.staffId);
-      if (!profile) return NextResponse.json({ profile: null }, { headers: { "Cache-Control": "no-store" } });
+      if (!profile) {
+        return NextResponse.json(
+          { profile: null },
+          { headers: { "Cache-Control": "no-store" } }
+        );
+      }
       verifyProfileToken(profile, input.token);
       return NextResponse.json(
         { profile: withoutSecret(profile) },
@@ -118,7 +158,7 @@ export async function POST(request: Request) {
 
     const now = new Date().toISOString();
     const currentSkills = asRecord(current?.skills);
-    const nextSkills: JsonRecord = { ...currentSkills };
+    const nextSkills: JsonRecord = {};
 
     for (const update of input.skills) {
       const previous = asRecord(currentSkills[update.id]);
