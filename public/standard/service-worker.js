@@ -1,4 +1,4 @@
-const CACHE = "amoretto-standard-v12";
+const CACHE = "amoretto-standard-v13";
 const STATIC_ASSETS = [
   "/standard/",
   "/standard/index.html",
