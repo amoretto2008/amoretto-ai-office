@@ -4,13 +4,47 @@
   const FILTER_KEY="amoretto-standard-priority-filter";
   const PRIORITY_ORDER=["urgent","today","info"];
   const LABELS={urgent:"最優先",today:"今日中",info:"確認のみ"};
-  let selectedFilter=localStorage.getItem(FILTER_KEY)||"all";
   let renderTimer=null;
   let anchorSequence=0;
+  let lastUrgentSignature="";
 
   const byId=(value)=>document.getElementById(value);
   const escapeHtml=(value)=>String(value??"").replace(/[&<>'"]/g,(char)=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
   const cleanText=(value)=>String(value||"").replace(/\s+/g," ").trim();
+  const todayKey=()=>{
+    const now=new Date();
+    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+  };
+  const cssEscape=(value)=>window.CSS?.escape?window.CSS.escape(String(value)):String(value).replace(/["\\]/g,"\\$&");
+
+  function loadFilter(){
+    const raw=localStorage.getItem(FILTER_KEY);
+    if(!raw)return {date:todayKey(),filter:"all"};
+    try{
+      const parsed=JSON.parse(raw);
+      if(parsed?.date===todayKey()&&["all",...PRIORITY_ORDER].includes(parsed.filter))return parsed;
+    }catch{
+      // 旧形式の保存値は営業日を特定できないため、安全のため引き継がない。
+    }
+    return {date:todayKey(),filter:"all"};
+  }
+
+  let filterState=loadFilter();
+  let selectedFilter=filterState.filter;
+
+  function persistFilter(){
+    filterState={date:todayKey(),filter:selectedFilter};
+    localStorage.setItem(FILTER_KEY,JSON.stringify(filterState));
+  }
+
+  function ensureCurrentDate(){
+    const current=todayKey();
+    if(filterState.date===current)return;
+    filterState={date:current,filter:"all"};
+    selectedFilter="all";
+    lastUrgentSignature="";
+    persistFilter();
+  }
 
   function injectStyles(){
     if(byId("priorityFlowStyles"))return;
@@ -116,13 +150,19 @@
     if(!rows.length)return;
     const now=new Date();
     const current=now.getHours()*60+now.getMinutes();
-    const timed=rows.map((row)=>({row,minutes:parseMinutes(cleanText(row.querySelector(".ops-timeline-time")?.textContent))})).filter((entry)=>entry.minutes!==null);
-    const next=timed.find((entry)=>entry.minutes>=current)||timed[timed.length-1];
-    if(!next)return;
-    const time=cleanText(next.row.querySelector(".ops-timeline-time")?.textContent);
-    const title=cleanText(next.row.querySelector("strong")?.textContent)||"営業タイムライン";
-    const detail=cleanText(next.row.querySelector(".small")?.textContent);
-    addItem(items,"today",`${time}　${title}`,detail,next.row);
+    const timed=rows
+      .map((row)=>({row,minutes:parseMinutes(cleanText(row.querySelector(".ops-timeline-time")?.textContent))}))
+      .filter((entry)=>entry.minutes!==null&&entry.minutes>=current);
+    const next=timed[0];
+    if(next){
+      const time=cleanText(next.row.querySelector(".ops-timeline-time")?.textContent);
+      const title=cleanText(next.row.querySelector("strong")?.textContent)||"営業タイムライン";
+      const detail=cleanText(next.row.querySelector(".small")?.textContent);
+      addItem(items,"today",`${time}　${title}`,detail,next.row);
+      return;
+    }
+    const closing=rows.find((row)=>/閉店チェック/.test(cleanText(row.textContent)));
+    if(closing)addItem(items,"today","退店後　閉店チェック","本日の時刻付き予定は終了しています。最終退店後に確認してください。",closing);
   }
 
   function collectItems(){
@@ -158,8 +198,15 @@
   }
 
   function render(){
+    ensureCurrentDate();
     if(!ensureCard())return;
     const items=collectItems();
+    const urgentSignature=items.filter((item)=>item.priority==="urgent").map((item)=>`${item.title}|${item.detail}`).join("||");
+    if(urgentSignature&&urgentSignature!==lastUrgentSignature&&!['all','urgent'].includes(selectedFilter)){
+      selectedFilter="urgent";
+      persistFilter();
+    }
+    lastUrgentSignature=urgentSignature;
     byId("opsPriorityTotal").textContent=`${items.length}件`;
     renderFilters(items);
     renderBody(items);
@@ -169,13 +216,13 @@
     const filter=event.target.closest("[data-priority-filter]");
     if(filter){
       selectedFilter=filter.dataset.priorityFilter;
-      localStorage.setItem(FILTER_KEY,selectedFilter);
+      persistFilter();
       render();
       return;
     }
     const item=event.target.closest("[data-priority-anchor]");
     if(!item)return;
-    const source=document.querySelector(`[data-ops-priority-anchor="${CSS.escape(item.dataset.priorityAnchor)}"]`);
+    const source=document.querySelector(`[data-ops-priority-anchor="${cssEscape(item.dataset.priorityAnchor)}"]`);
     if(!source)return;
     source.scrollIntoView({behavior:"smooth",block:"center"});
     source.classList.add("ops-priority-highlight");
@@ -208,6 +255,7 @@
       watch(block);
       window.addEventListener("online",scheduleRender);
       document.addEventListener("visibilitychange",()=>{if(!document.hidden)scheduleRender();});
+      setInterval(scheduleRender,60*1000);
     };
     tryStart();
   }

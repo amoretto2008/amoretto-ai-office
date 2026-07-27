@@ -14,7 +14,7 @@
   function reservationFromForm(){
     const date=id("opsReservationDate").value;
     const fullName=id("opsReservationFullName").value.trim();
-    const surname=id("opsReservationSurname").value.trim()||guessSurname(fullName);
+    const surname=id("opsReservationSurname").value.trim();
     const phone=normalizePhone(id("opsReservationPhone").value);
     const matches=customerMatches(phone,editingReservationId);
     const existing=editingReservationId?allOwnerReservations().find((item)=>item.id===editingReservationId):null;
@@ -25,7 +25,9 @@
   async function saveReservationFromForm(){
     try{
       const item=reservationFromForm();
-      if(!item.date||!item.fullName||!item.surname||!item.partySize)throw new Error("営業日、氏名、名字、人数を入力してください。");
+      if(!item.date||!item.fullName||!item.partySize)throw new Error("営業日、氏名、人数を入力してください。");
+      if(!item.surname)throw new Error("スタッフ表示用の名字を入力してください。氏名に空白がない場合は自動入力しません。");
+      if(/[\s　]/.test(item.surname))throw new Error("スタッフ表示用の名字には、名字だけを入力してください。");
       if(item.sceneTags.includes("同伴")&&!item.departureTime)throw new Error("同伴は退店希望時刻が必須です。");
       const newYear=reservationYear(item);
       const yearsToSave=new Set([newYear]);
