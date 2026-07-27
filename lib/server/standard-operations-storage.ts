@@ -14,9 +14,24 @@ function requireSupabase() {
   return supabase;
 }
 
-function isMissingObject(message: string) {
-  const normalized = message.toLowerCase();
-  return normalized.includes("not found") || normalized.includes("object not found");
+function isMissingObject(error: unknown) {
+  const record = error && typeof error === "object" ? (error as Record<string, unknown>) : {};
+  const message = String(record.message ?? error ?? "").toLowerCase();
+  const code = String(record.code ?? record.error ?? "").toLowerCase();
+  const status = Number(record.statusCode ?? record.status ?? 0);
+  const combined = `${message} ${code}`;
+
+  if (combined.includes("bucket")) return false;
+  return (
+    status === 404 ||
+    code === "404" ||
+    code === "not_found" ||
+    code === "object_not_found" ||
+    combined.includes("object not found") ||
+    combined.includes("resource was not found") ||
+    combined.includes("not found") ||
+    combined.includes("does not exist")
+  );
 }
 
 function safeYear(value: number) {
@@ -30,7 +45,13 @@ async function readJson(path: string): Promise<JsonRecord | null> {
   const supabase = requireSupabase();
   const { data, error } = await supabase.storage.from(BUCKET).download(path);
   if (error) {
-    if (isMissingObject(error.message)) return null;
+    if (isMissingObject(error)) return null;
+    console.error("AMORÉTTO STANDARD operations read failed", {
+      path,
+      message: error.message,
+      statusCode: (error as unknown as Record<string, unknown>).statusCode,
+      code: (error as unknown as Record<string, unknown>).code,
+    });
     throw new Error("営業データの読み込みに失敗しました。");
   }
   try {
@@ -125,7 +146,7 @@ export async function deleteOperationsReservationsYear(year: number) {
   const { error } = await supabase.storage.from(BUCKET).remove([
     `${PREFIX}/reservations/${clean}.json`,
   ]);
-  if (error && !isMissingObject(error.message)) {
+  if (error && !isMissingObject(error)) {
     throw new Error("営業履歴の削除に失敗しました。");
   }
   return { year: clean };
