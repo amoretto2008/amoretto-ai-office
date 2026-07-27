@@ -1,0 +1,290 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { requireStandardOwner } from "@/lib/server/standard-owner-auth";
+import { readStandardSkillProfile } from "@/lib/server/standard-skill-storage";
+import {
+  deleteOperationsReservationsYear,
+  readOperationsInventory,
+  readOperationsManualMeta,
+  readOperationsReservations,
+  readOperationsSettings,
+  readOperationsUpdates,
+  writeOperationsInventory,
+  writeOperationsManualMeta,
+  writeOperationsReservations,
+  writeOperationsSettings,
+  writeOperationsUpdates,
+} from "@/lib/server/standard-operations-storage";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const SCENE_TAGS = [
+  "初来店",
+  "常連",
+  "ランチ",
+  "ディナー",
+  "記念日",
+  "接待",
+  "家族利用",
+  "子ども連れ",
+  "ワイン",
+  "アレルギー",
+  "同伴",
+] as const;
+
+const SEATS = ["S席1", "S席2", "S席3", "S席4", "A席2", "B席4", "C席4", "A席＋B席8"] as const;
+const BOOKING_STATUSES = ["予約済", "来店済", "キャンセル", "無断キャンセル", "日時変更"] as const;
+const BOOKING_CHANNELS = ["電話", "公式予約フォーム", "メール", "LINE", "Instagram", "来店時", "紹介", "その他"] as const;
+const PREP_STATUSES = ["未確認", "購入必要", "購入済み", "お客様持込み", "不要"] as const;
+const INVENTORY_STATUSES = ["足りる", "発注必要", "注文済み", "入荷待ち", "入荷完了"] as const;
+const URGENCIES = ["通常", "至急"] as const;
+
+const dateText = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const timeText = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).or(z.literal(""));
+const idText = z.string().min(1).max(160).regex(/^[a-zA-Z0-9_-]+$/);
+const shortText = z.string().max(500).default("");
+const mediumText = z.string().max(4000).default("");
+const checkEntrySchema = z.object({
+  checked: z.boolean().default(false),
+  by: z.string().max(80).default(""),
+  at: z.string().max(50).default(""),
+});
+const checkMapSchema = z.record(z.string().max(80), checkEntrySchema).default({});
+
+const preferencesSchema = z.object({
+  meat: shortText,
+  rice: shortText,
+  drink: shortText,
+  seat: shortText,
+  pace: shortText,
+  commonCourse: shortText,
+}).default({ meat: "", rice: "", drink: "", seat: "", pace: "", commonCourse: "" });
+
+const reservationSchema = z.object({
+  id: idText,
+  date: dateText,
+  time: timeText,
+  fullName: z.string().min(1).max(160),
+  surname: z.string().min(1).max(80),
+  phone: z.string().max(80).default(""),
+  email: z.string().email().or(z.literal("")).default(""),
+  partySize: z.number().int().min(1).max(30),
+  seat: z.enum(SEATS),
+  course: mediumText,
+  anniversary: mediumText,
+  cakeStatus: z.enum(PREP_STATUSES).default("不要"),
+  bouquetStatus: z.enum(PREP_STATUSES).default("不要"),
+  cakeChecks: checkMapSchema,
+  bouquetChecks: checkMapSchema,
+  allergies: mediumText,
+  allergiesConfirmed: z.boolean().default(false),
+  dislikes: mediumText,
+  preferences: preferencesSchema,
+  ownerHandover: mediumText,
+  bookingStatus: z.enum(BOOKING_STATUSES).default("予約済"),
+  bookingChannel: z.enum(BOOKING_CHANNELS).default("その他"),
+  sceneTags: z.array(z.enum(SCENE_TAGS)).max(SCENE_TAGS.length).default([]),
+  departureTime: timeText,
+  customerKey: z.string().max(160).default(""),
+  createdAt: z.string().max(50).default(""),
+  updatedAt: z.string().max(50).default(""),
+});
+
+const inventoryItemSchema = z.object({
+  id: idText,
+  category: z.string().max(120).default("その他"),
+  name: z.string().min(1).max(240),
+  unit: z.string().max(40).default(""),
+  standardCount: z.number().min(0).nullable().default(null),
+  reorderPoint: z.number().min(0).nullable().default(null),
+  currentCount: z.number().min(0).nullable().default(null),
+  status: z.enum(INVENTORY_STATUSES).default("足りる"),
+  urgency: z.enum(URGENCIES).default("通常"),
+  supplier: shortText,
+  orderMethod: shortText,
+  contact: shortText,
+  orderNote: mediumText,
+  orderDeadline: shortText,
+  leadDays: z.number().int().min(0).max(365).nullable().default(null),
+  useDate: z.string().max(30).default(""),
+  orderUnit: shortText,
+  standardOrderQty: z.number().min(0).nullable().default(null),
+  minimumOrderQty: z.number().min(0).nullable().default(null),
+  arrivalReportedCount: z.number().min(0).nullable().default(null),
+  lastCheckedAt: z.string().max(50).default(""),
+  lastCheckedBy: z.string().max(80).default(""),
+  updatedAt: z.string().max(50).default(""),
+});
+
+const manualMetaEntrySchema = z.object({
+  sceneTags: z.array(z.enum(SCENE_TAGS)).max(SCENE_TAGS.length).default([]),
+  ownerLevel: z.number().int().min(0).max(3).default(0),
+  adjustable: z.array(z.string().max(500)).max(20).default([]),
+  ownerApproval: z.array(z.string().max(500)).max(20).default([]),
+  forbidden: z.array(z.string().max(500)).max(20).default([]),
+  reason: mediumText,
+  priority: z.array(z.string().max(200)).max(5).default([]),
+  relatedIds: z.array(idText).max(3).default([]),
+  reviewMonths: z.number().int().min(1).max(24).default(12),
+  lastReviewedAt: z.string().max(50).default(""),
+  updatedAt: z.string().max(50).default(""),
+});
+
+const importantUpdateSchema = z.object({
+  id: idText,
+  title: z.string().min(1).max(180),
+  body: mediumText,
+  scope: z.enum(["全員", "ホール", "焼き台責任者"]).default("全員"),
+  relatedSceneId: z.string().max(160).default(""),
+  active: z.boolean().default(true),
+  createdAt: z.string().max(50).default(""),
+  updatedAt: z.string().max(50).default(""),
+  acknowledgements: z.array(z.object({
+    staffId: z.string().max(80),
+    name: z.string().max(80),
+    at: z.string().max(50),
+  })).max(100).default([]),
+});
+
+const settingsSchema = z.object({
+  lunchOpen: timeText.default("11:30"),
+  dinnerOpen: timeText.default("17:00"),
+  openingLeadMinutes: z.number().int().min(0).max(360).default(90),
+  reservationCheckMinutes: z.number().int().min(0).max(180).default(30),
+  companionFoodLeadMinutes: z.number().int().min(0).max(180).default(20),
+  companionPaymentLeadMinutes: z.number().int().min(0).max(180).default(10),
+  retentionYears: z.number().int().min(1).max(10).default(5),
+  updatedAt: z.string().max(50).default(""),
+});
+
+const ownerSaveSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("saveReservations"), year: z.number().int().min(2020).max(2100), reservations: z.array(reservationSchema).max(2500) }),
+  z.object({ action: z.literal("saveInventory"), items: z.array(inventoryItemSchema).max(150) }),
+  z.object({ action: z.literal("saveManualMeta"), manualMeta: z.record(idText, manualMetaEntrySchema) }),
+  z.object({ action: z.literal("saveUpdates"), updates: z.array(importantUpdateSchema).max(100) }),
+  z.object({ action: z.literal("saveSettings"), settings: settingsSchema }),
+  z.object({ action: z.literal("deleteYear"), year: z.number().int().min(2020).max(2100), exportConfirmed: z.literal(true) }),
+]);
+
+const staffIdSchema = z.string().regex(/^staff-[a-f0-9-]{36}$/i);
+const tokenSchema = z.string().min(40).max(200);
+const staffBaseSchema = z.object({
+  staffId: staffIdSchema,
+  token: tokenSchema,
+  name: z.string().trim().min(1).max(80),
+  role: z.string().trim().max(80).default(""),
+  website: z.string().max(200).optional().default(""),
+});
+const staffPatchSchema = z.discriminatedUnion("action", [
+  staffBaseSchema.extend({
+    action: z.literal("reservationCheck"),
+    date: dateText,
+    reservationId: idText,
+    group: z.enum(["cake", "bouquet"]),
+    field: z.enum(["received", "stored", "candles", "platesKnife", "location", "timing"]),
+    checked: z.boolean(),
+  }),
+  staffBaseSchema.extend({
+    action: z.literal("ackUpdate"),
+    updateId: idText,
+  }),
+  staffBaseSchema.extend({
+    action: z.literal("inventoryReport"),
+    inventoryId: idText,
+    currentCount: z.number().min(0).nullable(),
+    needsOrder: z.boolean(),
+    urgency: z.enum(URGENCIES),
+    arrivalReportedCount: z.number().min(0).nullable().optional(),
+  }),
+]);
+
+type JsonRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): JsonRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
+}
+
+function hashToken(value: string) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function safeEqual(leftValue: string, rightValue: string) {
+  const left = Buffer.from(leftValue, "utf8");
+  const right = Buffer.from(rightValue, "utf8");
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+async function verifyStaff(staffId: string, token: string) {
+  const profile = await readStandardSkillProfile(staffId);
+  const expected = String(profile?.tokenHash ?? "");
+  if (!expected || !safeEqual(expected, hashToken(token))) {
+    throw new Error("この端末のスタッフ情報を確認できませんでした。プロフィールを保存してから再度お試しください。");
+  }
+  return profile as JsonRecord;
+}
+
+function defaultSettings() {
+  return settingsSchema.parse({});
+}
+
+function dateYear(date: string) {
+  return Number(date.slice(0, 4));
+}
+
+function normalizePhone(value: unknown) {
+  return String(value ?? "").replace(/\D/g, "").slice(0, 30);
+}
+
+function sanitizeReservation(input: JsonRecord) {
+  const parsed = reservationSchema.parse(input);
+  return {
+    id: parsed.id,
+    date: parsed.date,
+    time: parsed.time,
+    surname: parsed.surname,
+    partySize: parsed.partySize,
+    seat: parsed.seat,
+    course: parsed.course,
+    anniversary: parsed.anniversary,
+    cakeStatus: parsed.cakeStatus,
+    bouquetStatus: parsed.bouquetStatus,
+    cakeChecks: parsed.cakeChecks,
+    bouquetChecks: parsed.bouquetChecks,
+    allergies: parsed.allergiesConfirmed ? parsed.allergies : "",
+    allergiesConfirmed: parsed.allergiesConfirmed,
+    dislikes: parsed.dislikes,
+    ownerHandover: parsed.ownerHandover,
+    bookingStatus: parsed.bookingStatus,
+    sceneTags: parsed.sceneTags,
+    departureTime: parsed.departureTime,
+  };
+}
+
+function parseYears(value: string | null, currentYear: number) {
+  const requested = String(value ?? "")
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((year) => Number.isInteger(year) && year >= 2020 && year <= 2100);
+  if (requested.length) return [...new Set(requested)].slice(0, 12);
+  return [currentYear - 4, currentYear - 3, currentYear - 2, currentYear - 1, currentYear, currentYear + 1];
+}
+
+export async function GET(request: Request) {
+  try {
+    const url = new URL(request.url);
+    const ownerMode = url.searchParams.get("owner") === "1";
+    const now = new Date();
+    const currentYear = now.getUTCFullYear();
+    const settings = settingsSchema.parse({ ...defaultSettings(), ...(await readOperationsSettings()) });
+    const inventory = (await readOperationsInventory()).map((item) => inventoryItemSchema.parse(item));
+    const manualMetaRaw = await readOperationsManualMeta();
+    const manualMeta = z.record(idText, manualMetaEntrySchema).parse(manualMetaRaw);
+    const updates = (await readOperationsUpdates()).map((item) => importantUpdateSchema.parse(item));
+
+    if (ownerMode) {
+      await requireStandardOwner();
+      const years = parseYears(url.searchParams.get("years"), currentYear);
+      const reservationsByYear = await Promise.all(
