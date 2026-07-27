@@ -14,6 +14,7 @@ const STATIC_ASSETS = [
   "/standard/guide-plus.js",
   "/standard/skills-compat.js",
   "/standard/skills.js",
+  "/standard/skills-manual-link.js",
   "/standard/sw-register.js",
   "/standard/manifest.webmanifest",
   "/standard/icon.svg",
