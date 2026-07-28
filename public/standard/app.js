@@ -9,6 +9,7 @@
     });
   }
   load("defaults.js")
+    .then(()=>load("manual-extension.js"))
     .then(()=>load("core-base.js"))
     .then(()=>load("manual-pack.js"))
     .then(()=>load("core-content.js"))
