@@ -1,4 +1,4 @@
-const CACHE = "amoretto-standard-v14";
+const CACHE = "amoretto-standard-v15";
 const STATIC_ASSETS = [
   "/standard/",
   "/standard/index.html",
@@ -27,18 +27,60 @@ const STATIC_ASSETS = [
   "/standard/icon-512.png",
   "/standard/icon-maskable-512.png"
 ];
-self.addEventListener("install",(event)=>{event.waitUntil(caches.open(CACHE).then((cache)=>cache.addAll(STATIC_ASSETS)));self.skipWaiting();});
-self.addEventListener("activate",(event)=>{event.waitUntil(caches.keys().then((keys)=>Promise.all(keys.filter((key)=>key!==CACHE).map((key)=>caches.delete(key)))));self.clients.claim();});
+
+async function refreshOpenStandardPages(){
+  const clients=await self.clients.matchAll({type:"window",includeUncontrolled:true});
+  await Promise.all(clients.map(async(client)=>{
+    try{
+      const url=new URL(client.url);
+      if(url.origin===self.location.origin&&url.pathname.startsWith("/standard"))await client.navigate(client.url);
+    }catch{}
+  }));
+}
+
+async function networkFirst(request,fallbackPath=""){
+  try{
+    const response=await fetch(request);
+    if(response&&response.ok){
+      const cache=await caches.open(CACHE);
+      await cache.put(request,response.clone());
+    }
+    return response;
+  }catch{
+    const cached=await caches.match(request,{ignoreSearch:true});
+    if(cached)return cached;
+    if(fallbackPath){
+      const fallback=await caches.match(fallbackPath);
+      if(fallback)return fallback;
+    }
+    return Response.error();
+  }
+}
+
+self.addEventListener("install",(event)=>{
+  event.waitUntil(caches.open(CACHE).then((cache)=>cache.addAll(STATIC_ASSETS)));
+  self.skipWaiting();
+});
+
+self.addEventListener("activate",(event)=>{
+  event.waitUntil((async()=>{
+    const keys=await caches.keys();
+    await Promise.all(keys.filter((key)=>key!==CACHE).map((key)=>caches.delete(key)));
+    await self.clients.claim();
+    await refreshOpenStandardPages();
+  })());
+});
+
 self.addEventListener("fetch",(event)=>{
   const request=event.request;
   if(request.method!=="GET")return;
   const url=new URL(request.url);
   if(url.origin!==self.location.origin||url.pathname.startsWith("/api/"))return;
   if(request.mode==="navigate"&&url.pathname.startsWith("/standard")){
-    event.respondWith(fetch(request).then((response)=>{const copy=response.clone();caches.open(CACHE).then((cache)=>cache.put("/standard/index.html",copy));return response;}).catch(()=>caches.match("/standard/index.html")));
+    event.respondWith(networkFirst(request,"/standard/index.html"));
     return;
   }
   if(url.pathname.startsWith("/standard/")){
-    event.respondWith(caches.match(request).then((cached)=>cached||fetch(request).then((response)=>{const copy=response.clone();caches.open(CACHE).then((cache)=>cache.put(request,copy));return response;})));
+    event.respondWith(networkFirst(request));
   }
 });
