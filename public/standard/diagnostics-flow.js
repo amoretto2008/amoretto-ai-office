@@ -4,6 +4,7 @@
   const MODAL_ID="opsDiagnosticsModal";
   const FRAME_ID="opsDiagnosticsFrame";
   const BUTTON_ID="openOpsDiagnosticsBtn";
+  const INLINE_BUTTON_ID="openOpsDiagnosticsInlineBtn";
   const DIAGNOSTICS_URL="/api/standard/operations/diagnostics";
 
   const byId=(value)=>document.getElementById(value);
@@ -16,6 +17,8 @@
       .ops-diagnostics-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
       .ops-diagnostics-frame{width:100%;height:72vh;min-height:520px;border:1px solid var(--line);border-radius:14px;background:#fbfaf6}
       .ops-diagnostics-note{margin:0 0 10px;font-size:11px;color:var(--muted);line-height:1.55}
+      .ops-diagnostics-inline{display:grid;gap:10px;justify-items:center;margin-top:14px}
+      .ops-diagnostics-inline button{min-width:150px}
       @media(max-width:480px){
         .ops-diagnostics-actions{width:100%;display:grid;grid-template-columns:1fr 1fr}
         .ops-diagnostics-actions button{width:100%}
@@ -41,51 +44,86 @@
           <iframe class="ops-diagnostics-frame" id="${FRAME_ID}" title="AMORÉTTO STANDARD 接続診断"></iframe>
         </div>
       </div>`);
-    byId("closeOpsDiagnosticsBtn")?.addEventListener("click",()=>closeModal(MODAL_ID));
+    byId("closeOpsDiagnosticsBtn")?.addEventListener("click",()=>{
+      if(typeof closeModal==="function")closeModal(MODAL_ID);
+      else byId(MODAL_ID)?.classList.remove("open");
+    });
     byId(MODAL_ID)?.addEventListener("click",(event)=>{
-      if(event.target===byId(MODAL_ID))closeModal(MODAL_ID);
+      if(event.target!==byId(MODAL_ID))return;
+      if(typeof closeModal==="function")closeModal(MODAL_ID);
+      else byId(MODAL_ID)?.classList.remove("open");
     });
     return byId(MODAL_ID);
   }
 
   function openDiagnostics(){
-    ensureModal();
-    const frame=byId(FRAME_ID);
-    if(frame)frame.src=`${DIAGNOSTICS_URL}?embedded=1&t=${Date.now()}`;
-    openModal(MODAL_ID);
+    try{
+      ensureModal();
+      const frame=byId(FRAME_ID);
+      if(frame)frame.src=`${DIAGNOSTICS_URL}?embedded=1&t=${Date.now()}`;
+      if(typeof openModal==="function")openModal(MODAL_ID);
+      else byId(MODAL_ID)?.classList.add("open");
+    }catch{
+      window.location.assign(`${DIAGNOSTICS_URL}?t=${Date.now()}`);
+    }
   }
 
-  function injectButton(){
+  function makeButton(idValue){
+    const button=document.createElement("button");
+    button.type="button";
+    button.className="secondary";
+    button.id=idValue;
+    button.textContent="接続診断";
+    button.addEventListener("click",openDiagnostics);
+    return button;
+  }
+
+  function injectHeaderButton(){
     if(byId(BUTTON_ID))return true;
     const panel=byId("operationsAdmin");
     const titleRow=panel?.querySelector(".admin-title-row");
     const reload=byId("reloadOperationsBtn");
     if(!panel||!titleRow||!reload)return false;
 
-    const actions=document.createElement("div");
-    actions.className="ops-diagnostics-actions";
-    const button=document.createElement("button");
-    button.type="button";
-    button.className="secondary";
-    button.id=BUTTON_ID;
-    button.textContent="接続診断";
-    button.addEventListener("click",openDiagnostics);
-
-    titleRow.insertBefore(actions,reload);
-    actions.append(button,reload);
+    let actions=titleRow.querySelector(".ops-diagnostics-actions");
+    if(!actions){
+      actions=document.createElement("div");
+      actions.className="ops-diagnostics-actions";
+      titleRow.insertBefore(actions,reload);
+      actions.appendChild(reload);
+    }
+    actions.insertBefore(makeButton(BUTTON_ID),reload);
     return true;
+  }
+
+  function injectInlineButton(){
+    const body=byId("operationsOwnerBody");
+    if(!body||byId(INLINE_BUTTON_ID))return;
+    const text=String(body.textContent||"");
+    if(!/(読み込みに失敗|読み込めません|通信に失敗)/.test(text))return;
+    const box=document.createElement("div");
+    box.className="ops-diagnostics-inline";
+    const note=document.createElement("div");
+    note.className="small muted";
+    note.textContent="原因を安全に確認します。";
+    box.append(note,makeButton(INLINE_BUTTON_ID));
+    body.appendChild(box);
+  }
+
+  function injectAll(){
+    injectHeaderButton();
+    injectInlineButton();
   }
 
   function start(){
     injectStyles();
     ensureModal();
-    if(injectButton())return;
-    const observer=new MutationObserver(()=>{
-      if(injectButton())observer.disconnect();
-    });
-    observer.observe(document.body,{childList:true,subtree:true});
+    injectAll();
+    const observer=new MutationObserver(injectAll);
+    observer.observe(document.body,{childList:true,subtree:true,characterData:true});
   }
 
+  window.openStandardOperationsDiagnostics=openDiagnostics;
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start,{once:true});
   else start();
 })();
