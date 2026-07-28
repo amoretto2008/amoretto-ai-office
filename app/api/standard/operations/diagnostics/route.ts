@@ -59,6 +59,34 @@ function isMissingObject(error: unknown) {
   return status === 404 || text.includes("object not found") || (text.includes("not found") && !text.includes("bucket"));
 }
 
+function renderOwnerLoginRedirect() {
+  const destination = "/standard/index.html?owner=login&reason=diagnostics";
+  return `<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="0;url=${destination}">
+<title>AMORÉTTO STANDARD 店主ログイン</title>
+<style>
+  :root{color-scheme:light;--ink:#262724;--wine:#8c3040;--line:#ddd8cc;--paper:#fbfaf6;--muted:#6c6d68}
+  *{box-sizing:border-box}body{margin:0;background:var(--paper);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;color:var(--ink)}
+  main{max-width:680px;margin:0 auto;padding:34px 24px}.eyebrow{letter-spacing:.18em;color:var(--wine);font-size:12px;font-weight:800}h1{font-size:25px;margin:8px 0 18px}
+  .row{display:flex;gap:12px;padding:16px;border:1px solid var(--line);border-left:5px solid var(--wine);border-radius:13px;background:white}.mark{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;font-weight:900;background:#f0eee8;flex:0 0 auto}.row strong{font-size:15px}.row p{font-size:13px;color:var(--muted);margin:5px 0 0;line-height:1.65}
+  .diagnosis,.action{margin-top:16px;padding:16px;border-radius:13px;border:1px solid var(--line);line-height:1.7}.diagnosis{background:#f2eee7}.action{background:#fff3f0;border-color:#dfbbb6}a{display:inline-block;margin-top:20px;background:var(--wine);color:white;text-decoration:none;padding:12px 18px;border-radius:12px;font-weight:800}
+</style>
+</head>
+<body><main>
+<div class="eyebrow">OWNER ONLY / CONNECTION CHECK</div>
+<h1>店主ログインへ戻ります</h1>
+<div class="row ng" data-owner-login-required="true"><span class="mark">!</span><div><strong>故障ではありません</strong><p>店主ログインの有効期限が切れているか、ログインしていないブラウザで診断を開いています。</p></div></div>
+<div class="diagnosis">AMORÉTTO STANDARD本体の故障ではありません。</div>
+<div class="action">STANDARDへ戻り、店主ログイン画面を表示します。</div>
+<a href="${destination}">店主ログインへ戻る</a>
+<script>window.location.replace(${JSON.stringify(destination)});</script>
+</main></body></html>`;
+}
+
 function renderPage(checks: Check[], diagnosis: string, nextAction: string) {
   const rows = checks.map((check) => `
     <div class="row ${check.ok ? "ok" : "ng"}">
@@ -100,11 +128,10 @@ export async function GET() {
   try {
     await requireStandardOwner();
   } catch {
-    return new NextResponse(renderPage(
-      [{ label: "店主認証", ok: false, detail: "店主ログインが確認できませんでした。" }],
-      "診断を実行できませんでした。",
-      "AMORÉTTO STANDARDで店主ログインした後、この診断ページを開き直してください。"
-    ), { status: 401, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+    return new NextResponse(renderOwnerLoginRedirect(), {
+      status: 401,
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+    });
   }
 
   const checks: Check[] = [];
