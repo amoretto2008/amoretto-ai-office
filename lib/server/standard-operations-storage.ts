@@ -8,6 +8,8 @@ const MAX_UPDATES = 100;
 
 type JsonRecord = Record<string, unknown>;
 
+let bucketReadyPromise: Promise<void> | null = null;
+
 function requireSupabase() {
   const supabase = getSupabaseAdmin();
   if (!supabase) throw new Error("Supabaseが未設定です。");
@@ -20,6 +22,46 @@ function errorDetails(error: unknown) {
   const code = String(record.code ?? record.error ?? "");
   const status = Number(record.statusCode ?? record.status ?? 0);
   return { message, code, status, combined: `${message} ${code}`.toLowerCase() };
+}
+
+function isBucketAlreadyPresent(error: unknown) {
+  const { status, combined } = errorDetails(error);
+  return (
+    status === 409 ||
+    combined.includes("already exists") ||
+    combined.includes("already present") ||
+    combined.includes("duplicate")
+  );
+}
+
+async function ensureBucket() {
+  if (bucketReadyPromise) return bucketReadyPromise;
+
+  bucketReadyPromise = (async () => {
+    const supabase = requireSupabase();
+    const { error } = await supabase.storage.createBucket(BUCKET, {
+      public: false,
+      fileSizeLimit: 2 * 1024 * 1024,
+      allowedMimeTypes: ["application/json"],
+    });
+
+    if (error && !isBucketAlreadyPresent(error)) {
+      const details = errorDetails(error);
+      console.error("AMORÉTTO STANDARD operations bucket setup failed", {
+        message: details.message,
+        statusCode: details.status,
+        code: details.code,
+      });
+      throw new Error("営業データの保存先を準備できませんでした。");
+    }
+  })();
+
+  try {
+    await bucketReadyPromise;
+  } catch (error) {
+    bucketReadyPromise = null;
+    throw error;
+  }
 }
 
 function isMissingObject(error: unknown) {
@@ -58,6 +100,7 @@ async function confirmObjectIsAbsent(
   });
 
   if (error) {
+    if (isMissingObject(error)) return true;
     const details = errorDetails(error);
     console.error("AMORÉTTO STANDARD operations list failed", {
       path,
@@ -80,6 +123,7 @@ function safeYear(value: number) {
 
 async function readJson(path: string): Promise<JsonRecord | null> {
   const supabase = requireSupabase();
+  await ensureBucket();
   const { data, error } = await supabase.storage.from(BUCKET).download(path);
   if (error) {
     if (isMissingObject(error) || (await confirmObjectIsAbsent(supabase, path))) {
@@ -103,6 +147,7 @@ async function readJson(path: string): Promise<JsonRecord | null> {
 
 async function writeJson(path: string, value: unknown) {
   const supabase = requireSupabase();
+  await ensureBucket();
   const body = Buffer.from(JSON.stringify(value, null, 2), "utf8");
   const { error } = await supabase.storage.from(BUCKET).upload(path, body, {
     contentType: "application/json",
@@ -183,6 +228,7 @@ export async function writeOperationsUpdates(updates: JsonRecord[]) {
 export async function deleteOperationsReservationsYear(year: number) {
   const clean = safeYear(year);
   const supabase = requireSupabase();
+  await ensureBucket();
   const path = `${PREFIX}/reservations/${clean}.json`;
   const { error } = await supabase.storage.from(BUCKET).remove([path]);
   if (error && !isMissingObject(error) && !(await confirmObjectIsAbsent(supabase, path))) {
