@@ -1,5 +1,5 @@
 (function(){
-  const ASSET_VERSION="19";
+  const ASSET_VERSION="20";
   function load(src){
     return new Promise((resolve,reject)=>{
       const script=document.createElement("script");
