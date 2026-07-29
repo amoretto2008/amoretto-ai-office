@@ -42,7 +42,6 @@ function safeId(value: string) {
 
 async function readJson(path: string): Promise<JsonRecord | null> {
   const supabase = requireSupabase();
-  await ensureBucket(CONFIG_BUCKET, false);
   const { data, error } = await supabase.storage.from(CONFIG_BUCKET).download(path);
   if (error) {
     const message = error.message.toLowerCase();
@@ -58,7 +57,6 @@ async function readJson(path: string): Promise<JsonRecord | null> {
 
 async function writeJson(path: string, value: unknown) {
   const supabase = requireSupabase();
-  await ensureBucket(CONFIG_BUCKET, false);
   const body = Buffer.from(JSON.stringify(value, null, 2), "utf8");
   const { error } = await supabase.storage.from(CONFIG_BUCKET).upload(path, body, {
     contentType: "application/json",
@@ -70,7 +68,6 @@ async function writeJson(path: string, value: unknown) {
 
 async function listJson(prefix: string, limit: number) {
   const supabase = requireSupabase();
-  await ensureBucket(CONFIG_BUCKET, false);
   const { data, error } = await supabase.storage.from(CONFIG_BUCKET).list(prefix, {
     limit,
     sortBy: { column: "created_at", order: "desc" },
@@ -194,7 +191,6 @@ export async function updateStandardNote(id: string, patch: JsonRecord) {
 export async function deleteStandardNote(id: string) {
   const clean = safeId(id);
   const supabase = requireSupabase();
-  await ensureBucket(CONFIG_BUCKET, false);
   const { error } = await supabase.storage.from(CONFIG_BUCKET).remove([
     `${NOTES_PREFIX}/${clean}.json`,
   ]);
