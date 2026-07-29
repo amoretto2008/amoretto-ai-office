@@ -45,7 +45,7 @@
         {id:"manual-opening-10",text:"ドリンクを補充する（ソーダを重点確認）",required:true},
         {id:"manual-opening-10b",text:"水を優先して用意する",required:true},
         {id:"manual-opening-10c",text:"烏龍茶を茶葉2パックで用意する",required:true},
-        {id:"manual-opening-11",text:"カスターセットを補充する",required:true},
+        {id:"manual-opening-11",text:"カスターセットを補充する（オリーブ油・塩・胡椒・醤油・水）",required:true},
         {id:"manual-opening-12",text:"鉄板を磨く",required:true},
         {id:"manual-opening-13",text:"ビールサーバーを洗浄する",required:true},
         {id:"manual-opening-14",text:"灰皿を洗う",required:true}
