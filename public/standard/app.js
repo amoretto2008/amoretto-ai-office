@@ -1,5 +1,5 @@
 (function(){
-  const ASSET_VERSION="24";
+  const ASSET_VERSION="29";
   function load(src){
     return new Promise((resolve,reject)=>{
       const script=document.createElement("script");
@@ -12,7 +12,9 @@
   load("defaults.js")
     .then(()=>load("core-base.js"))
     .then(()=>load("manual-pack.js"))
+    .then(()=>load("manual-fixes.js"))
     .then(()=>load("core-content.js"))
+    .then(()=>load("manual-ui-fixes.js"))
     .then(()=>load("course-flow.js"))
     .then(()=>load("staff-ready.js"))
     .then(()=>load("admin-core.js"))
