@@ -171,7 +171,6 @@
     inventoryItems(items);
     updateItems(items);
     timelineItem(items);
-    if(!items.length)addItem(items,"info","現在、表示中の確認事項はありません","営業情報が登録されると重要度別に表示します。",byId("operationsTodayBlock"));
     return items;
   }
 
@@ -188,6 +187,10 @@
   function renderBody(items){
     const target=byId("opsPriorityBody");
     if(!target)return;
+    if(!items.length){
+      target.innerHTML='<div class="ops-priority-empty">現在、確認事項はありません。営業情報が登録されると表示します。</div>';
+      return;
+    }
     const priorities=selectedFilter==="all"?PRIORITY_ORDER:[selectedFilter];
     const sections=priorities.map((priority)=>{
       const filtered=items.filter((item)=>item.priority===priority);
