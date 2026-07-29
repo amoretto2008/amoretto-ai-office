@@ -13,6 +13,11 @@ type Check = {
   detail: string;
 };
 
+type ServerKeyStatus = {
+  ok: boolean;
+  label: string;
+};
+
 function escapeHtml(value: unknown) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -40,17 +45,20 @@ function projectRef(url: string) {
   }
 }
 
-function keyType(key: string) {
-  if (key.startsWith("sb_secret_")) return "Supabase secret key";
+function serverKeyStatus(key: string): ServerKeyStatus {
+  if (!key) return { ok: false, label: "未設定" };
+  if (key.startsWith("sb_secret_")) return { ok: true, label: "Supabase secret key" };
+  if (key.startsWith("sb_publishable_")) return { ok: false, label: "Supabase publishable key" };
   if (key.startsWith("eyJ")) {
     try {
       const payload = JSON.parse(Buffer.from(key.split(".")[1] ?? "", "base64url").toString("utf8")) as Record<string, unknown>;
-      return `JWT（role: ${String(payload.role ?? "不明")}）`;
+      const role = String(payload.role ?? "不明");
+      return { ok: role === "service_role", label: `JWT（role: ${role}）` };
     } catch {
-      return "JWT形式（内容判定不可）";
+      return { ok: false, label: "JWT形式（内容判定不可）" };
     }
   }
-  return "形式不明";
+  return { ok: false, label: "形式不明" };
 }
 
 function isMissingObject(error: unknown) {
@@ -137,6 +145,7 @@ export async function GET() {
   const checks: Check[] = [];
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const keyStatus = serverKeyStatus(key);
 
   checks.push({
     label: "Supabase URL",
@@ -145,15 +154,22 @@ export async function GET() {
   });
   checks.push({
     label: "サーバー用キー",
-    ok: Boolean(key),
-    detail: key ? `設定あり（${keyType(key)}）` : "SUPABASE_SERVICE_ROLE_KEYが未設定です。",
+    ok: keyStatus.ok,
+    detail: key
+      ? `設定あり（${keyStatus.label}）${keyStatus.ok ? "" : "。サーバー保存用のキーではありません。"}`
+      : "SUPABASE_SERVICE_ROLE_KEYが未設定です。",
   });
 
-  if (!url || !key) {
+  if (!url || !key || !keyStatus.ok) {
+    const invalidKey = Boolean(key) && !keyStatus.ok;
     return new NextResponse(renderPage(
       checks,
-      "Vercel ProductionのSupabase環境変数が不足しています。",
-      "VercelのEnvironment Variablesで不足項目を設定し、Productionを再デプロイしてください。"
+      invalidKey
+        ? "SUPABASE_SERVICE_ROLE_KEYに、サーバー保存用ではないキーが設定されています。"
+        : "Vercel ProductionのSupabase環境変数が不足しています。",
+      invalidKey
+        ? "同じSupabaseプロジェクトのSecret key（sb_secret_...）またはLegacy API Keysのservice_roleを設定し、Productionを再デプロイしてください。anon・publishableキーは使用しないでください。"
+        : "VercelのEnvironment Variablesで不足項目を設定し、Productionを再デプロイしてください。"
     ), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   }
 
@@ -177,16 +193,21 @@ export async function GET() {
     const text = `${detail.message} ${detail.code}`.toLowerCase();
     const authProblem = detail.status === 401 || detail.status === 403 || text.includes("unauthorized") || text.includes("invalid api key") || text.includes("jwt");
     const bucketProblem = detail.status === 404 || text.includes("bucket");
+    const networkProblem = text.includes("fetch failed") || text.includes("enotfound") || text.includes("econnrefused") || text.includes("network");
     const diagnosis = authProblem
       ? "接続先URLとサーバー用キーの組み合わせ、またはキーの権限に問題があります。"
       : bucketProblem
         ? `接続先Supabaseに非公開バケット「${BUCKET}」が存在しません。`
-        : "Supabase Storageへの接続でエラーが発生しています。";
+        : networkProblem
+          ? "接続先Supabaseに到達できません。プロジェクトが停止中か、URLが違う可能性があります。"
+          : "Supabase Storageへの接続でエラーが発生しています。";
     const nextAction = authProblem
       ? "VercelのNEXT_PUBLIC_SUPABASE_URLとSUPABASE_SERVICE_ROLE_KEYを、同じSupabaseプロジェクトの値でそろえて再デプロイしてください。"
       : bucketProblem
         ? `Supabase Storageで「${BUCKET}」という非公開バケットを作成してください。`
-        : "表示されたエラー文をスクリーンショットで共有してください。";
+        : networkProblem
+          ? "NEXT_PUBLIC_SUPABASE_URLの接続先が稼働中のSupabaseプロジェクトか確認し、同じプロジェクトのSecret keyと組み合わせて再デプロイしてください。"
+          : "表示されたエラー文をスクリーンショットで共有してください。";
 
     return new NextResponse(renderPage(checks, diagnosis, nextAction), {
       headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
