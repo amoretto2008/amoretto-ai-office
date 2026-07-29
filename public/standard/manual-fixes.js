@@ -52,10 +52,41 @@
       ];
     }
 
+    const idle = (merged.checklists || []).find((item) => item.id === "idle-time");
+    if (idle) {
+      idle.description = "客席を最優先し、余裕がある時だけ進める。";
+      idle.items = [
+        {id:"manual-idle-01",text:"カウンター後ろの棚と酒瓶を拭く",required:false},
+        {id:"manual-idle-01b",text:"客席後ろの棚と酒瓶を拭く",required:false},
+        {id:"manual-idle-02",text:"ワイングラスを拭く",required:false},
+        {id:"manual-idle-03",text:"換気扇を掃除する",required:false},
+        {id:"manual-idle-03b",text:"エアコンフィルターを掃除する",required:false},
+        {id:"manual-idle-03c",text:"コンロを掃除する",required:false}
+      ];
+    }
+
     const closing = (merged.checklists || []).find((item) => item.id === "closing");
-    const closingTrash = closing && (closing.items || []).find((item) => item.id === "manual-closing-01");
-    if (closingTrash) {
-      closingTrash.text = "厨房・シンク・トイレのゴミを回収し、各ゴミ箱に新しい袋を付けてから捨てに行く";
+    if (closing) {
+      closing.description = "営業終了後、上から順に確認する。";
+      closing.items = [
+        {id:"manual-closing-01",text:"厨房・シンク・トイレのゴミを回収し、各ゴミ箱に新しい袋を付けてから捨てに行く",required:true},
+        {id:"manual-closing-02",text:"おしぼりを裏へ出す",required:true},
+        {id:"manual-closing-03",text:"ご飯を釜から器へ移し、冷蔵庫に保管する",required:true},
+        {id:"manual-closing-04",text:"鉄板を磨く",required:true},
+        {id:"manual-closing-05",text:"翌日のテーブルセットを行う",required:true},
+        {id:"manual-closing-06",text:"灰皿を手洗いする",required:true},
+        {id:"manual-closing-06b",text:"ビールの受け皿を洗う",required:true},
+        {id:"manual-closing-06c",text:"コーヒーの受け皿を洗う",required:true},
+        {id:"manual-closing-07",text:"洗浄機の水を抜く",required:true},
+        {id:"manual-closing-07b",text:"洗浄機を洗浄する",required:true},
+        {id:"manual-closing-08",text:"看板の電源を確認する",required:true},
+        {id:"manual-closing-08b",text:"ポットの電源を確認する",required:true},
+        {id:"manual-closing-08c",text:"おしぼりウォーマーの電源を確認する",required:true},
+        {id:"manual-closing-08d",text:"エアコンの電源を確認する",required:true},
+        {id:"manual-closing-08e",text:"鉄板の電源を確認する",required:true},
+        {id:"manual-closing-08f",text:"トイレの電源を確認する",required:true},
+        {id:"manual-closing-09",text:"ガスを確認する",required:true}
+      ];
     }
 
     return merged;
