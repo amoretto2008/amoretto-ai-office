@@ -23,6 +23,26 @@
       garlicRiceScene.dont = ["厨房と確認せず、自分の判断だけで提供を進めない"];
     }
 
+    const nextPlateScene = (merged.scenes || []).find((item) => item.id === "hall-observe-06-next-plate");
+    if (nextPlateScene) {
+      nextPlateScene.dont = ["器や皿を出し間違えない", "温めが必要な皿を忘れない"];
+    }
+
+    const refillScene = (merged.scenes || []).find((item) => item.id === "hall-observe-15-refill-bottle");
+    if (refillScene) {
+      refillScene.dont = ["品切れ直前になってから慌てて冷やさない"];
+    }
+
+    const anniversaryToolsScene = (merged.scenes || []).find((item) => item.id === "anniversary-04-forks-firework");
+    if (anniversaryToolsScene) {
+      anniversaryToolsScene.dont = ["フォークや花火の本数不足・置き忘れをしない"];
+    }
+
+    const anniversaryTimingScene = (merged.scenes || []).find((item) => item.id === "anniversary-05-timing");
+    if (anniversaryTimingScene) {
+      anniversaryTimingScene.dont = ["食事の流れを確認せず、早すぎる・遅すぎるタイミングで提供しない"];
+    }
+
     const opening = (merged.checklists || []).find((item) => item.id === "opening");
     if (opening) {
       opening.description = "営業前に上から順に確認する。";
@@ -37,7 +57,7 @@
         {id:"manual-opening-05",text:"洗浄機の電源を入れる",required:true},
         {id:"manual-opening-05b",text:"ポットに水を補給し、電源を入れる",required:true},
         {id:"manual-opening-05c",text:"おしぼりウォーマーの電源を入れる",required:true},
-        {id:"manual-opening-06",text:"テーブルをセットする",required:true},
+        {id:"manual-opening-06",text:"テーブルをセットする（スプーンがなければ後回し）",required:true},
         {id:"manual-opening-06b",text:"椅子を拭く",required:true},
         {id:"manual-opening-07",text:"予約札を置く",required:true},
         {id:"manual-opening-08",text:"米の合数を確認し、炊飯をセットする",required:true},
