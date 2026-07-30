@@ -109,6 +109,20 @@
       ];
     }
 
+    const inventory = (merged.checklists || []).find((item) => item.id === "inventory");
+    if (inventory) {
+      const inventoryTextById = new Map([
+        ["inventory-004", "ジンジャーエール：基準数 10"],
+        ["inventory-025", "わさび：基準数 1"],
+        ["inventory-026", "ニンニク醤油：基準数 1"],
+        ["inventory-049", "CAMUS カミュ V.S.O.P：基準数 1"]
+      ]);
+      (inventory.items || []).forEach((item) => {
+        const text = inventoryTextById.get(item.id);
+        if (text) item.text = text;
+      });
+    }
+
     return merged;
   };
 })();
