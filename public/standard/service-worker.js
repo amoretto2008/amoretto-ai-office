@@ -1,4 +1,4 @@
-const CACHE = "amoretto-standard-v26";
+const CACHE = "amoretto-standard-v27";
 const STATIC_ASSETS = [
   "/standard/",
   "/standard/index.html",
@@ -42,22 +42,27 @@ async function refreshOpenStandardPages(){
   }));
 }
 
+async function cachedFallback(request,fallbackPath=""){
+  const cached=await caches.match(request,{ignoreSearch:true});
+  if(cached)return cached;
+  if(fallbackPath){
+    const fallback=await caches.match(fallbackPath);
+    if(fallback)return fallback;
+  }
+  return null;
+}
+
 async function networkFirst(request,fallbackPath=""){
   try{
     const response=await fetch(request);
     if(response&&response.ok){
       const cache=await caches.open(CACHE);
       await cache.put(request,response.clone());
+      return response;
     }
-    return response;
+    return (await cachedFallback(request,fallbackPath))||response||Response.error();
   }catch{
-    const cached=await caches.match(request,{ignoreSearch:true});
-    if(cached)return cached;
-    if(fallbackPath){
-      const fallback=await caches.match(fallbackPath);
-      if(fallback)return fallback;
-    }
-    return Response.error();
+    return (await cachedFallback(request,fallbackPath))||Response.error();
   }
 }
 
@@ -69,7 +74,7 @@ self.addEventListener("install",(event)=>{
 self.addEventListener("activate",(event)=>{
   event.waitUntil((async()=>{
     const keys=await caches.keys();
-    await Promise.all(keys.filter((key)=>key!==CACHE).map((key)=>caches.delete(key)));
+    await Promise.all(keys.filter((key)=>key.startsWith("amoretto-standard-")&&key!==CACHE).map((key)=>caches.delete(key)));
     await self.clients.claim();
     await refreshOpenStandardPages();
   })());
