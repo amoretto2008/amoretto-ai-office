@@ -5,6 +5,12 @@ import { createAuthToken } from "@/lib/auth-token";
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
+  if (pathname === "/standard") {
+    const standardUrl = request.nextUrl.clone();
+    standardUrl.pathname = "/standard/index.html";
+    return NextResponse.redirect(standardUrl);
+  }
+
   if (
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/login") ||
