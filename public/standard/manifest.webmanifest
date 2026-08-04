@@ -5,7 +5,7 @@
   "start_url":"/standard/index.html",
   "scope":"/standard/",
   "display":"standalone",
-  "orientation":"portrait-primary",
+  "orientation":"any",
   "background_color":"#ffffff",
   "theme_color":"#1f2a26",
   "lang":"ja-JP",
